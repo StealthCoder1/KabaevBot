@@ -1,0 +1,5 @@
+asyncpg==0.31.0
+sqlalchemy==2.0.44
+aiogram==3.22.0
+sshtunnel==0.4.0
+paramiko<4

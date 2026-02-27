@@ -1,3 +1,7 @@
+import os
+
+from aiogram.utils.backoff import BackoffConfig
+
 from tgBot.bot.shared import *
 
 # Import handler modules for side effects (router registration)
@@ -10,6 +14,13 @@ from tgBot.bot.handlers import channel as _channel_handlers  # noqa: F401
 
 DAILY_BRAND_QUESTION_TEXT = "Какая марка авто наиболее интересна?"
 DAILY_BRAND_QUESTION_INTERVAL_SECONDS = 24 * 60 * 60
+POLLING_TIMEOUT_SECONDS = int(os.getenv("POLLING_TIMEOUT_SECONDS", "30"))
+POLLING_BACKOFF_CONFIG = BackoffConfig(
+    min_delay=float(os.getenv("POLLING_RETRY_MIN_DELAY_SECONDS", "1")),
+    max_delay=float(os.getenv("POLLING_RETRY_MAX_DELAY_SECONDS", "30")),
+    factor=float(os.getenv("POLLING_RETRY_FACTOR", "1.5")),
+    jitter=float(os.getenv("POLLING_RETRY_JITTER", "0.2")),
+)
 
 
 async def _send_daily_brand_question(bot: Bot) -> None:
@@ -68,7 +79,14 @@ async def start_bot():
 
     daily_broadcast_task = asyncio.create_task(_daily_brand_question_loop(bot))
     try:
-        await dp.start_polling(bot)
+        await dp.start_polling(
+            bot,
+            polling_timeout=POLLING_TIMEOUT_SECONDS,
+            backoff_config=POLLING_BACKOFF_CONFIG,
+            allowed_updates=dp.resolve_used_update_types(),
+            handle_signals=False,
+            close_bot_session=True,
+        )
     finally:
         daily_broadcast_task.cancel()
         try:

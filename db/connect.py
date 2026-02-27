@@ -9,7 +9,7 @@ db_url = make_url(DATABASE_URL)
 connect_args = {}
 
 # asyncpg defaults to SSL negotiation ("prefer") for TCP connections.
-# Local Docker Postgres usually has SSL disabled and resets the connection.
+# Many local/self-hosted PostgreSQL instances run without SSL.
 if (
     db_url.drivername == "postgresql+asyncpg"
     and db_url.host in {"127.0.0.1", "localhost", "::1"}

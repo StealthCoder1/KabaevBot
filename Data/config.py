@@ -40,6 +40,6 @@ ID_FOR_AUTO_IN_PATH = int(os.getenv("ID_FOR_AUTO_IN_PATH", "0"))
 ADMIN_TG_ID = _parse_admin_ids(os.getenv("ADMIN_TG_ID", "7079975091,7875342185"))
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql+asyncpg://postgres:postgres@postgres:5432/kabaevbot",
+    "postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/kabaevbot?ssl=disable",
 )
 INTERVAL_MINUTES_FOR_SEND_DB = int(os.getenv("INTERVAL_MINUTES_FOR_SEND_DB", "30"))

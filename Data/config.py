@@ -35,8 +35,6 @@ _load_env_file()
 
 TG_BOT_TOKEN = os.getenv("TG_BOT_TOKEN", "")
 DEBUG = _parse_bool(os.getenv("DEBUG"), False)
-channel_id = int(os.getenv("CHANNEL_ID", "-1003426962243"))
-ID_FOR_AUTO_IN_PATH = int(os.getenv("ID_FOR_AUTO_IN_PATH", "0"))
 ADMIN_TG_ID = _parse_admin_ids(os.getenv("ADMIN_TG_ID", "7079975091,7875342185"))
 DATABASE_URL = os.getenv(
     "DATABASE_URL",

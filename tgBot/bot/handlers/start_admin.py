@@ -3,21 +3,29 @@ from tgBot.states import AdminStates
 from aiogram.filters import StateFilter
 import os
 
+ADMIN_BACK_TEXT = BACK_BUTTON_TEXT
+
+
+async def _send_home_menu(message: types.Message) -> None:
+    await message.answer(HOME_MENU_TEXT, reply_markup=get_start_keyboard())
+    if not is_admin(message.from_user.id):
+        await message.answer(
+            MAIN_MENU_VARIANT_TEXT,
+            reply_markup=get_user_reply_keyboard(),
+        )
+
 
 @router.message(CommandStart())
 async def cmd_start(message: types.Message):
     await ensure_user_exists(message.from_user)
-    await message.answer(
-        "Ниже тебя ждут подборки реальных авто в любой бюджет с живыми отзывами наших клиентов.\n\n"
-        "💯Autopartner— это когда авто из США перестаёт быть просто идеей. С чего начнём?",
-        reply_markup=get_start_keyboard(),
-    )
-    if not is_admin(message.from_user.id):
-        # Send a second message to apply the reply keyboard for regular users.
-        await message.answer(
-            "\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0432\u0430\u0440\u0438\u0430\u043d\u0442",
-            reply_markup=get_user_reply_keyboard(),
-        )
+    await _send_home_menu(message)
+
+
+@router.message(StateFilter("*"), F.text == HOME_REPLY_BUTTON_TEXT)
+async def home_reply_button_handler(message: types.Message, state: FSMContext):
+    await ensure_user_exists(message.from_user)
+    await state.clear()
+    await _send_home_menu(message)
 
 
 @router.message(Command("admin"))
@@ -146,10 +154,56 @@ async def auto_in_path_channel_settings_handler(message: types.Message, state: F
         "Настройка канала «Авто в пути».\n"
         f"Текущий ID: {current_chat_id_text}{title_line}\n\n"
         "Отправьте новый ID канала/группы (например `-1003706573371`).\n"
-        "Внимание: при смене ID все сохранённые посты «Авто в пути» в БД будут обнулены.",
+        "Внимание: при смене ID все сохранённые посты «Авто в пути» в БД будут обнулены.\n"
+        f"Чтобы вернуться в предыдущее меню, нажмите «{ADMIN_BACK_TEXT}».",
         parse_mode="Markdown",
         reply_markup=get_admin_keyboard(),
     )
+
+
+@router.message(StateFilter("*"), F.text == "Канал лидов")
+async def leads_channel_settings_handler(message: types.Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    await state.clear()
+
+    channel_record = await get_channel_record(LEADS_CHANNEL_CODE)
+    current_chat_id = getattr(channel_record, "chat_id", None) if channel_record else None
+    current_title = getattr(channel_record, "title", None) if channel_record else None
+    current_chat_id_text = str(current_chat_id) if current_chat_id is not None else "не задан"
+    title_line = f"\nНазвание: {current_title}" if current_title else ""
+
+    await state.set_state(AdminStates.waiting_leads_channel_id)
+    await message.answer(
+        "Настройка канала для лидов.\n"
+        f"Текущий ID: {current_chat_id_text}{title_line}\n\n"
+        "Отправьте новый ID канала/группы (например `-1003706573371`).\n"
+        f"Чтобы вернуться в предыдущее меню, нажмите «{ADMIN_BACK_TEXT}».",
+        parse_mode="Markdown",
+        reply_markup=get_admin_keyboard(),
+    )
+
+
+@router.message(
+    StateFilter(
+        AdminStates.waiting_auto_in_path_channel_id,
+        AdminStates.waiting_leads_channel_id,
+    ),
+    F.text == ADMIN_BACK_TEXT,
+)
+@router.message(
+    StateFilter(
+        AdminStates.waiting_auto_in_path_channel_id,
+        AdminStates.waiting_leads_channel_id,
+    ),
+    F.text == "Назад",
+)
+async def admin_channel_settings_back_handler(message: types.Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        await state.clear()
+        return
+    await state.clear()
+    await message.answer("Возврат в админ-меню.", reply_markup=get_admin_keyboard())
 
 
 @router.message(AdminStates.waiting_auto_in_path_channel_id)
@@ -161,7 +215,7 @@ async def auto_in_path_channel_save_handler(message: types.Message, state: FSMCo
     raw_value = (message.text or "").strip()
     if not raw_value:
         await message.answer(
-            "Отправьте числовой ID канала, например `-1003706573371`.",
+            f"Отправьте числовой ID канала, например `-1003706573371`, или нажмите «{ADMIN_BACK_TEXT}».",
             parse_mode="Markdown",
         )
         return
@@ -170,7 +224,7 @@ async def auto_in_path_channel_save_handler(message: types.Message, state: FSMCo
         new_chat_id = int(raw_value)
     except ValueError:
         await message.answer(
-            "Неверный формат. Нужен числовой ID канала, например `-1003706573371`.",
+            f"Неверный формат. Нужен числовой ID канала, например `-1003706573371`, или нажмите «{ADMIN_BACK_TEXT}».",
             parse_mode="Markdown",
         )
         return
@@ -190,4 +244,35 @@ async def auto_in_path_channel_save_handler(message: types.Message, state: FSMCo
         text += f"\nПосты в БД обнулены: `{deleted_posts}`"
     await message.answer(text, parse_mode="Markdown", reply_markup=get_admin_keyboard())
 
+
+@router.message(AdminStates.waiting_leads_channel_id)
+async def leads_channel_save_handler(message: types.Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        await state.clear()
+        return
+
+    raw_value = (message.text or "").strip()
+    if not raw_value:
+        await message.answer(
+            f"Отправьте числовой ID канала, например `-1003706573371`, или нажмите «{ADMIN_BACK_TEXT}».",
+            parse_mode="Markdown",
+        )
+        return
+
+    try:
+        new_chat_id = int(raw_value)
+    except ValueError:
+        await message.answer(
+            f"Неверный формат. Нужен числовой ID канала, например `-1003706573371`, или нажмите «{ADMIN_BACK_TEXT}».",
+            parse_mode="Markdown",
+        )
+        return
+
+    await set_leads_channel_id(new_chat_id, title="Лиды")
+    await state.clear()
+    await message.answer(
+        f"Канал лидов обновлён: `{new_chat_id}`",
+        parse_mode="Markdown",
+        reply_markup=get_admin_keyboard(),
+    )
 

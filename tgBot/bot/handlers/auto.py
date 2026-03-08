@@ -1,11 +1,25 @@
 from tgBot.bot.shared import *
 
 
-@router.callback_query(F.data == "lead:auto_pick")
+@router.callback_query((F.data == "lead:auto_pick") | F.data.startswith("lead:auto_pick:"))
 async def auto_pick_callback(callback: types.CallbackQuery):
     await ensure_user_exists(callback.from_user)
+    parts = callback.data.split(":", maxsplit=2)
+    source = parts[2] if len(parts) == 3 else ""
+    back_callback_data = {
+        "risks": "guarantees:risks",
+        "quick_main_auction": "quick_main:auction",
+        "quick_main_delivery": "quick_main:delivery",
+        "quick_main_credit": "quick_main:credit",
+        "quick_main_insurance": "quick_main:insurance",
+        "quick_main_hidden_damage": "quick_main:hidden_damage",
+    }.get(source, "guarantees:home")
     await callback.message.answer(
-        "💰 Для какого бюджета нужна подборка?", reply_markup=get_price_range_keyboard()
+        BUDGET_PROMPT_TEXT,
+        reply_markup=get_price_range_keyboard(
+            back_callback_data=back_callback_data,
+            source=source,
+        ),
     )
     await callback.answer()
 
@@ -13,7 +27,10 @@ async def auto_pick_callback(callback: types.CallbackQuery):
 @router.callback_query(F.data.startswith("price:"))
 async def price_range_callback(callback: types.CallbackQuery, bot: Bot):
     await ensure_user_exists(callback.from_user)
-    payload = callback.data.split(":", maxsplit=1)[1]
+    parts = callback.data.split(":", maxsplit=2)
+    payload = parts[1] if len(parts) > 1 else ""
+    source = parts[2] if len(parts) == 3 else ""
+    auto_pick_callback_data = f"lead:auto_pick:{source}" if source else "lead:auto_pick"
     if payload == "cancel":
         await callback.message.answer("Выбор цены отменен.")
         await callback.answer()
@@ -47,7 +64,7 @@ async def price_range_callback(callback: types.CallbackQuery, bot: Bot):
             "3) комплектации\n"
             "Мы ориентируемся на статистику\n\n"
             "Начнём? Жмите кнопку ниже 👇",
-            reply_markup=get_budget_9_12_models_keyboard(),
+            reply_markup=get_budget_9_12_models_keyboard(back_callback_data=auto_pick_callback_data),
         )
         await callback.answer()
         return
@@ -66,7 +83,7 @@ async def price_range_callback(callback: types.CallbackQuery, bot: Bot):
             "3) комплектации\n"
             "Мы ориентируемся на статистику\n\n"
             "Начнём? Жмите кнопку ниже 👇",
-            reply_markup=get_budget_12_15_models_keyboard(),
+            reply_markup=get_budget_12_15_models_keyboard(back_callback_data=auto_pick_callback_data),
         )
         await callback.answer()
         return
@@ -85,7 +102,7 @@ async def price_range_callback(callback: types.CallbackQuery, bot: Bot):
             "3) комплектации\n"
             "Мы ориентируемся на статистику\n\n"
             "Начнём? Жмите кнопку ниже 👇",
-            reply_markup=get_budget_15_20_models_keyboard(),
+            reply_markup=get_budget_15_20_models_keyboard(back_callback_data=auto_pick_callback_data),
         )
         await callback.answer()
         return
@@ -104,7 +121,7 @@ async def price_range_callback(callback: types.CallbackQuery, bot: Bot):
             "3) комплектации\n"
             "Мы ориентируемся на статистику\n\n"
             "Начнём? Жмите кнопку ниже 👇",
-            reply_markup=get_budget_20_30_models_keyboard(),
+            reply_markup=get_budget_20_30_models_keyboard(back_callback_data=auto_pick_callback_data),
         )
         await callback.answer()
         return
@@ -123,7 +140,7 @@ async def price_range_callback(callback: types.CallbackQuery, bot: Bot):
             "3) комплектации\n"
             "Мы ориентируемся на статистику\n\n"
             "Начнём? Жмите кнопку ниже 👇",
-            reply_markup=get_budget_30k_plus_models_keyboard(),
+            reply_markup=get_budget_30k_plus_models_keyboard(back_callback_data=auto_pick_callback_data),
         )
         await callback.answer()
         return
@@ -143,7 +160,7 @@ async def price_range_callback(callback: types.CallbackQuery, bot: Bot):
             "3) комплектации\n"
             "Мы ориентируемся на статистику\n\n"
             "Начнём? Жмите кнопку ниже 👇",
-            reply_markup=get_electric_models_keyboard(),
+            reply_markup=get_electric_models_keyboard(back_callback_data=auto_pick_callback_data),
         )
         await callback.answer()
         return
@@ -255,12 +272,9 @@ async def auto_model_want_callback(callback: types.CallbackQuery, state: FSMCont
         pending_lead_action="auto_model_want",
         pending_lead_message_text=model_title,
         pending_lead_price_range=price_range_label,
+        pending_back_target="auto_pick",
     )
-    await callback.message.answer(
-        "Отлично. Введите имя и номер телефона в одном сообщении.\n"
-        "Пример: Иван +79991234567",
-        reply_markup=get_contact_request_keyboard(),
-    )
+    await callback.message.answer(LEAD_CONTACT_REQUEST_TEXT, reply_markup=get_contact_request_keyboard())
     await callback.answer()
 
 
@@ -274,12 +288,9 @@ async def best_deals_want_callback(
         pending_lead_action="best_deals_want",
         pending_lead_message_text=None,
         pending_lead_price_range=None,
+        pending_back_target="best_deals",
     )
-    await callback.message.answer(
-        "Отлично. Введите имя и номер телефона в одном сообщении.\n"
-        "Пример: Иван +79991234567",
-        reply_markup=get_contact_request_keyboard(),
-    )
+    await callback.message.answer(LEAD_CONTACT_REQUEST_TEXT, reply_markup=get_contact_request_keyboard())
     await callback.answer()
 
 
@@ -287,7 +298,7 @@ async def best_deals_want_callback(
 async def best_deals_other_callback(callback: types.CallbackQuery):
     await ensure_user_exists(callback.from_user)
     await callback.message.answer(
-        "💰 Для какого бюджета нужна подборка?", reply_markup=get_price_range_keyboard()
+        BUDGET_PROMPT_TEXT, reply_markup=get_price_range_keyboard()
     )
     await callback.answer()
 
@@ -296,7 +307,7 @@ async def best_deals_other_callback(callback: types.CallbackQuery):
 async def best_deals_back_callback(callback: types.CallbackQuery):
     await ensure_user_exists(callback.from_user)
     await callback.message.answer(
-        "💰 Для какого бюджета нужна подборка?", reply_markup=get_price_range_keyboard()
+        BUDGET_PROMPT_TEXT, reply_markup=get_price_range_keyboard()
     )
     await callback.answer()
 
@@ -319,12 +330,9 @@ async def max_profit_want_callback(
         pending_lead_action="max_profit_want",
         pending_lead_message_text=lot_title,
         pending_lead_price_range=None,
+        pending_back_target="home",
     )
-    await callback.message.answer(
-        "Отлично. Введите имя и номер телефона в одном сообщении.\n"
-        "Пример: Иван +79991234567",
-        reply_markup=get_contact_request_keyboard(),
-    )
+    await callback.message.answer(LEAD_CONTACT_REQUEST_TEXT, reply_markup=get_contact_request_keyboard())
     await callback.answer()
 
 

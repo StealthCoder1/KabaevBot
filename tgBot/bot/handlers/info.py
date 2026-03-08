@@ -89,11 +89,7 @@ async def guarantees_risks_callback(callback: types.CallbackQuery):
 @router.callback_query(F.data == "guarantees:home")
 async def guarantees_home_callback(callback: types.CallbackQuery):
     await ensure_user_exists(callback.from_user)
-    await callback.message.answer(
-        "Ниже тебя ждут подборки реальных авто в любой бюджет с живыми отзывами наших клиентов.\n\n"
-        "💯Autopartner— это когда авто из США перестаёт быть просто идеей. С чего начнём?",
-        reply_markup=get_start_keyboard(),
-    )
+    await callback.message.answer(HOME_MENU_TEXT, reply_markup=get_start_keyboard())
     await callback.answer()
 
 
@@ -141,7 +137,7 @@ async def quick_main_topic_callback(callback: types.CallbackQuery):
             "000BYN.\n\n"
             "✉️ Пишите — посоветуем варианты и поможем сделать всё\n"
             "правильно.",
-            reply_markup=get_quick_main_credit_keyboard(),
+            reply_markup=get_quick_main_credit_keyboard(auto_pick_source="quick_main_credit"),
         )
         await callback.answer()
         return
@@ -163,7 +159,7 @@ async def quick_main_topic_callback(callback: types.CallbackQuery):
             "технику внутри салона, если что.\n\n"
             "✉️ Хотите спокойствия? Напишите — подберём авто и\n"
             "оформим всё грамотно.",
-            reply_markup=get_quick_main_credit_keyboard(),
+            reply_markup=get_quick_main_credit_keyboard(auto_pick_source="quick_main_insurance"),
         )
         await callback.answer()
         return
@@ -181,7 +177,7 @@ async def quick_main_topic_callback(callback: types.CallbackQuery):
             "воспользуюсь этим шансом.\n\n"
             "👇 Напишите менеджеру — всё объясним и начнём искать\n"
             "ваш вариант.",
-            reply_markup=get_quick_main_credit_keyboard(),
+            reply_markup=get_quick_main_credit_keyboard(auto_pick_source="quick_main_hidden_damage"),
         )
         await callback.answer()
         return

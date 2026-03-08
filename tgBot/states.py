@@ -7,3 +7,4 @@ class LeadStates(StatesGroup):
 
 class AdminStates(StatesGroup):
     waiting_auto_in_path_channel_id = State()
+    waiting_leads_channel_id = State()

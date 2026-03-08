@@ -3,8 +3,11 @@
 
 async def _broadcast_source_post(message: types.Message, bot: Bot):
     source_chat_id = message.chat.id
+    broadcast_source_channel_id = await get_broadcast_source_channel_id()
     auto_in_path_channel_id = await get_auto_in_path_channel_id()
-    allowed_sources = {cid for cid in (channel_id, auto_in_path_channel_id) if cid is not None}
+    allowed_sources = {
+        cid for cid in (broadcast_source_channel_id, auto_in_path_channel_id) if cid is not None
+    }
     if source_chat_id not in allowed_sources:
         return
 
@@ -18,7 +21,7 @@ async def _broadcast_source_post(message: types.Message, bot: Bot):
     if not user_ids:
         return
 
-    if source_chat_id == channel_id and await handle_sold_post(message, user_ids, bot):
+    if source_chat_id == broadcast_source_channel_id and await handle_sold_post(message, user_ids, bot):
         return
 
     if message.media_group_id:

@@ -1,4 +1,4 @@
-﻿from tgBot.bot.shared import *
+from tgBot.bot.shared import *
 
 
 def _default_reply_keyboard_for_user(user: types.User | None):
@@ -14,12 +14,37 @@ async def _start_contact_flow(message: types.Message, state: FSMContext) -> None
         pending_lead_action="contact_manager",
         pending_lead_message_text=None,
         pending_lead_price_range=None,
+        pending_back_target="home",
     )
-    await message.answer(
-        "🚀 Введите номер — и стартуем с подбором\n\n"
-        "Просто нажмите кнопку 👇",
-        reply_markup=get_contact_request_keyboard(),
-    )
+    await message.answer(LEAD_CONTACT_REQUEST_TEXT, reply_markup=get_contact_request_keyboard())
+
+
+async def _show_back_target_menu(message: types.Message, back_target: str) -> None:
+    if back_target == "auto_pick":
+        await message.answer(
+            BUDGET_PROMPT_TEXT,
+            reply_markup=get_price_range_keyboard(),
+        )
+        return
+
+    if back_target == "moto_pick":
+        title_text, hint_text = _get_moto_intro_texts()
+        await message.answer(
+            title_text
+            or MOTO_INTRO_FALLBACK_TEXT,
+            reply_markup=get_moto_classes_keyboard(),
+        )
+        if hint_text:
+            await message.answer(hint_text)
+        return
+
+    if back_target == "best_deals":
+        await message.answer(BEST_DEALS_NEXT_STEP_TEXT, reply_markup=get_best_deals_keyboard())
+        return
+
+    await message.answer(MAIN_MENU_ACTION_TEXT, reply_markup=get_start_keyboard())
+    if not is_admin(message.from_user.id):
+        await message.answer(MAIN_MENU_VARIANT_TEXT, reply_markup=get_user_reply_keyboard())
 
 
 @router.callback_query(F.data == "lead:contact_manager")
@@ -28,7 +53,7 @@ async def contact_manager_callback(callback: types.CallbackQuery, state: FSMCont
     await callback.answer()
 
 
-@router.message(F.text == "Связаться с менеджером")
+@router.message(F.text == CONTACT_MANAGER_TEXT)
 async def contact_manager_reply_button_handler(message: types.Message, state: FSMContext):
     await _start_contact_flow(message, state)
 
@@ -66,9 +91,18 @@ async def collect_contact_from_button(message: types.Message, state: FSMContext,
     await notify_admins_new_lead(bot, lead)
     await state.clear()
     await message.answer(
-        "Спасибо. Менеджер свяжется с вами.",
+        LEAD_SAVED_TEXT,
         reply_markup=_default_reply_keyboard_for_user(message.from_user),
     )
+
+
+@router.message(LeadStates.waiting_contact, F.text == BACK_BUTTON_TEXT)
+@router.message(LeadStates.waiting_contact, F.text == "Назад")
+async def contact_waiting_back_handler(message: types.Message, state: FSMContext):
+    state_data = await state.get_data()
+    back_target = state_data.get("pending_back_target") or "home"
+    await state.clear()
+    await _show_back_target_menu(message, back_target)
 
 
 @router.message(LeadStates.waiting_contact)
@@ -104,6 +138,6 @@ async def collect_contact(message: types.Message, state: FSMContext, bot: Bot):
     await notify_admins_new_lead(bot, lead)
     await state.clear()
     await message.answer(
-        "Спасибо. Менеджер свяжется с вами.",
+        LEAD_SAVED_TEXT,
         reply_markup=_default_reply_keyboard_for_user(message.from_user),
     )

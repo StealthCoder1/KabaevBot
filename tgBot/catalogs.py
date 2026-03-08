@@ -5,6 +5,7 @@ from aiogram import types
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from log import logger
+from tgBot.texts import BACK_BUTTON_TEXT
 
 MOTO_CATALOG_PATH = Path(__file__).resolve().parent.parent / "Data" / "json" / "moto_catalog.json"
 _moto_catalog_cache = None
@@ -103,7 +104,10 @@ def _get_auto_category_label(category_id: str) -> str:
     }
     return fallback_labels.get(category_id, category_id)
 
-def _get_auto_models_keyboard(category_id: str) -> types.InlineKeyboardMarkup | None:
+def _get_auto_models_keyboard(
+    category_id: str,
+    back_callback_data: str = "lead:auto_pick",
+) -> types.InlineKeyboardMarkup | None:
     category = _get_auto_category_config(category_id)
     if not category:
         return None
@@ -149,12 +153,13 @@ def _get_auto_models_keyboard(category_id: str) -> types.InlineKeyboardMarkup | 
                 overflow -= cut
                 if rows[idx] == 0:
                     rows.pop()
-        if rows:
-            kb.adjust(*rows)
-        else:
-            kb.adjust(*([1] * items_count))
+        if not rows:
+            rows = [1] * items_count
     else:
-        kb.adjust(*([1] * items_count))
+        rows = [1] * items_count
+
+    kb.button(text=BACK_BUTTON_TEXT, callback_data=back_callback_data)
+    kb.adjust(*rows, 1)
 
     return kb.as_markup()
 
@@ -273,6 +278,8 @@ def _get_moto_models_keyboard(class_id: str) -> types.InlineKeyboardMarkup | Non
     if not rows:
         return None
 
+    kb.button(text=BACK_BUTTON_TEXT, callback_data="lead:moto_pick")
+    rows.append(1)
     kb.adjust(*rows)
     return kb.as_markup()
 

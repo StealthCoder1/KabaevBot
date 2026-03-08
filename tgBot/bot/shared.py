@@ -12,7 +12,7 @@ from aiogram.fsm.context import FSMContext
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
-from Data.config import TG_BOT_TOKEN, channel_id, ID_FOR_AUTO_IN_PATH, ADMIN_TG_ID
+from Data.config import TG_BOT_TOKEN, ADMIN_TG_ID
 from db.connect import async_session
 from db import models as db_models
 from log import logger
@@ -59,6 +59,21 @@ from tgBot.keyboards import (
     get_user_reply_keyboard,
 )
 from tgBot.states import LeadStates
+from tgBot.texts import (
+    BACK_BUTTON_TEXT,
+    BEST_DEALS_NEXT_STEP_TEXT,
+    BUDGET_PROMPT_TEXT,
+    CONTACT_MANAGER_TEXT,
+    HOME_MENU_TEXT,
+    HOME_REPLY_BUTTON_TEXT,
+    LEAD_CONTACT_REQUEST_TEXT,
+    LEAD_SAVED_TEXT,
+    MAIN_MENU_ACTION_TEXT,
+    MAIN_MENU_VARIANT_TEXT,
+    MOTO_HINT_FALLBACK_TEXT,
+    MOTO_INTRO_FALLBACK_TEXT,
+    MOTO_MODEL_RESOLVE_ERROR_TEXT,
+)
 
 User = db_models.User
 Lead = getattr(db_models, "Lead", None)
@@ -70,9 +85,14 @@ router = Router()
 media_groups_buffer = defaultdict(list)
 media_cache = {}
 
+BROADCAST_SOURCE_CHANNEL_CODE = "broadcast_source"
+DEFAULT_BROADCAST_SOURCE_CHANNEL_ID = -1003426962243
+DEFAULT_BROADCAST_SOURCE_CHANNEL_TITLE = "Основной канал"
 AUTO_IN_PATH_CHANNEL_CODE = "auto_in_path_source"
 DEFAULT_AUTO_IN_PATH_CHANNEL_ID = -1003706573371
 DEFAULT_AUTO_IN_PATH_CHANNEL_TITLE = "Авто в пути"
+LEADS_CHANNEL_CODE = "leads_target"
+DEFAULT_LEADS_CHANNEL_TITLE = "Лиды"
 
 
 def _pick_max_profit_lot(exclude_id: str | None = None) -> dict[str, str]:
@@ -322,25 +342,43 @@ async def ensure_channels_config_defaults() -> None:
         logger.info("Модель Channel отсутствует в db.models, сидинг channels пропущен")
         return
 
-    async with async_session() as session:
-        result = await session.execute(select(Channel).where(Channel.code == AUTO_IN_PATH_CHANNEL_CODE))
-        record = result.scalar_one_or_none()
-        if record is not None:
-            return
+    default_channels: list[dict[str, int | str]] = [
+        {
+            "code": BROADCAST_SOURCE_CHANNEL_CODE,
+            "chat_id": DEFAULT_BROADCAST_SOURCE_CHANNEL_ID,
+            "title": DEFAULT_BROADCAST_SOURCE_CHANNEL_TITLE,
+        },
+        {
+            "code": AUTO_IN_PATH_CHANNEL_CODE,
+            "chat_id": DEFAULT_AUTO_IN_PATH_CHANNEL_ID,
+            "title": DEFAULT_AUTO_IN_PATH_CHANNEL_TITLE,
+        },
+    ]
 
-        session.add(
-            Channel(
-                **_filter_model_kwargs(
-                    Channel,
-                    code=AUTO_IN_PATH_CHANNEL_CODE,
-                    chat_id=DEFAULT_AUTO_IN_PATH_CHANNEL_ID,
-                    title=DEFAULT_AUTO_IN_PATH_CHANNEL_TITLE,
-                    created_at=datetime.utcnow(),
-                    updated_at=datetime.utcnow(),
+    now = datetime.utcnow()
+    async with async_session() as session:
+        result = await session.execute(select(Channel.code))
+        existing_codes = {row[0] for row in result.all()}
+        created_any = False
+        for channel_cfg in default_channels:
+            if channel_cfg["code"] in existing_codes:
+                continue
+            session.add(
+                Channel(
+                    **_filter_model_kwargs(
+                        Channel,
+                        code=channel_cfg["code"],
+                        chat_id=channel_cfg["chat_id"],
+                        title=channel_cfg["title"],
+                        created_at=now,
+                        updated_at=now,
+                    )
                 )
             )
-        )
-        await session.commit()
+            created_any = True
+
+        if created_any:
+            await session.commit()
 
 
 async def get_channel_chat_id(code: str, fallback: int | None = None) -> int | None:
@@ -400,12 +438,27 @@ async def set_channel_chat_id(code: str, chat_id: int, title: str | None = None)
 
 
 async def get_auto_in_path_channel_id() -> int | None:
-    fallback = ID_FOR_AUTO_IN_PATH or None
-    return await get_channel_chat_id(AUTO_IN_PATH_CHANNEL_CODE, fallback=fallback)
+    return await get_channel_chat_id(AUTO_IN_PATH_CHANNEL_CODE)
 
 
 async def set_auto_in_path_channel_id(chat_id: int, title: str | None = None) -> None:
     await set_channel_chat_id(AUTO_IN_PATH_CHANNEL_CODE, chat_id, title=title)
+
+
+async def get_broadcast_source_channel_id() -> int | None:
+    return await get_channel_chat_id(BROADCAST_SOURCE_CHANNEL_CODE)
+
+
+async def set_broadcast_source_channel_id(chat_id: int, title: str | None = None) -> None:
+    await set_channel_chat_id(BROADCAST_SOURCE_CHANNEL_CODE, chat_id, title=title)
+
+
+async def get_leads_channel_id() -> int | None:
+    return await get_channel_chat_id(LEADS_CHANNEL_CODE)
+
+
+async def set_leads_channel_id(chat_id: int, title: str | None = None) -> None:
+    await set_channel_chat_id(LEADS_CHANNEL_CODE, chat_id, title=title)
 
 
 async def save_lead(
@@ -682,7 +735,16 @@ async def notify_admins_new_lead(bot: Bot, lead: Lead) -> None:
     )
     full_text = text + extra
 
+    leads_channel_id = await get_leads_channel_id()
+    if leads_channel_id is not None:
+        try:
+            await bot.send_message(leads_channel_id, full_text)
+        except Exception as exc:
+            logger.error(f"Не удалось отправить лид в канал {leads_channel_id}: {exc}")
+
     for admin_id in ADMIN_TG_ID:
+        if leads_channel_id is not None and admin_id == leads_channel_id:
+            continue
         try:
             await bot.send_message(admin_id, full_text)
         except Exception as exc:

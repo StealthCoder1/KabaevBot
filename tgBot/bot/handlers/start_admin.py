@@ -154,8 +154,7 @@ async def auto_in_path_channel_settings_handler(message: types.Message, state: F
         "Настройка канала «Авто в пути».\n"
         f"Текущий ID: {current_chat_id_text}{title_line}\n\n"
         "Отправьте новый ID канала/группы (например `-1003706573371`).\n"
-        "Внимание: при смене ID все сохранённые посты «Авто в пути» в БД будут обнулены.\n"
-        f"Чтобы вернуться в предыдущее меню, нажмите «{ADMIN_BACK_TEXT}».",
+        "Внимание: при смене ID все сохранённые посты «Авто в пути» в БД будут обнулены.\n",
         parse_mode="Markdown",
         reply_markup=get_admin_keyboard(),
     )
@@ -177,8 +176,7 @@ async def leads_channel_settings_handler(message: types.Message, state: FSMConte
     await message.answer(
         "Настройка канала для лидов.\n"
         f"Текущий ID: {current_chat_id_text}{title_line}\n\n"
-        "Отправьте новый ID канала/группы (например `-1003706573371`).\n"
-        f"Чтобы вернуться в предыдущее меню, нажмите «{ADMIN_BACK_TEXT}».",
+        "Отправьте новый ID канала/группы (например `-1003706573371`).\n",
         parse_mode="Markdown",
         reply_markup=get_admin_keyboard(),
     )

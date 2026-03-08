@@ -341,8 +341,7 @@ def get_admin_keyboard() -> types.ReplyKeyboardMarkup:
     kb.button(text="Последние лиды")
     kb.button(text="Канал авто в пути")
     kb.button(text="Канал лидов")
-    kb.button(text=HOME_REPLY_BUTTON_TEXT)
-    kb.adjust(1, 1, 1, 1, 1)
+    kb.adjust(1, 1, 1, 1)
     return kb.as_markup(resize_keyboard=True)
 
 def get_contact_request_keyboard() -> types.ReplyKeyboardMarkup:

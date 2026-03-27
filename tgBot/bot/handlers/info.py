@@ -20,13 +20,36 @@ async def auto_in_path_catalog_callback(callback: types.CallbackQuery, bot: Bot)
         )
         return
 
-    sent_batches = await send_auto_in_transit_posts_to_user(bot, callback.from_user.id)
-    if sent_batches > 0:
+    sent_post = await send_auto_in_transit_post_to_user(bot, callback.from_user.id, batch_index=0)
+    if sent_post:
         return
     await callback.message.answer(
         "Скоро появятся новые лоты, и вы сразу получите уведомление."
     )
     return
+
+
+@router.callback_query(F.data.startswith("auto_in_path:next:"))
+async def auto_in_path_next_callback(callback: types.CallbackQuery, bot: Bot):
+    await ensure_user_exists(callback.from_user)
+
+    parts = callback.data.split(":")
+    if len(parts) != 3:
+        await callback.answer("Не удалось открыть следующий пост.")
+        return
+
+    try:
+        batch_index = int(parts[2])
+    except ValueError:
+        await callback.answer("Не удалось открыть следующий пост.")
+        return
+
+    sent_post = await send_auto_in_transit_post_to_user(bot, callback.from_user.id, batch_index=batch_index)
+    if sent_post:
+        await callback.answer()
+        return
+
+    await callback.answer("Больше постов пока нет.")
 
 
 @router.callback_query(F.data == "info:guarantees")

@@ -47,9 +47,76 @@ async def _show_back_target_menu(message: types.Message, back_target: str) -> No
         await message.answer(MAIN_MENU_VARIANT_TEXT, reply_markup=get_user_reply_keyboard())
 
 
+def _message_plain_text(message: types.Message | None) -> str:
+    if message is None:
+        return ""
+    return (message.text or message.caption or "").strip()
+
+
+def _build_post_like_lead_text(
+    message: types.Message | None,
+    source_chat_id: int,
+    source_message_id: int,
+) -> str:
+    candidates = [
+        _message_plain_text(getattr(message, "reply_to_message", None)),
+        _message_plain_text(message),
+    ]
+    for candidate in candidates:
+        if not candidate or candidate in {
+            POST_LIKE_PROMPT_TEXT,
+            AUTO_IN_PATH_BROWSER_PROMPT_TEXT,
+        }:
+            continue
+
+        normalized_text = re.sub(r"\s+", " ", candidate).strip()
+        if normalized_text:
+            return f"{normalized_text[:160]} [post {source_chat_id}:{source_message_id}]"
+
+    return f"Пост из группы [post {source_chat_id}:{source_message_id}]"
+
+
 @router.callback_query(F.data == "lead:contact_manager")
 async def contact_manager_callback(callback: types.CallbackQuery, state: FSMContext):
     await _start_contact_flow(callback.message, state)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("post_like:"))
+async def post_like_callback(callback: types.CallbackQuery, state: FSMContext):
+    await ensure_user_exists(callback.from_user)
+
+    parts = callback.data.split(":", maxsplit=2)
+    if len(parts) != 3:
+        await callback.answer("Не удалось определить пост.")
+        return
+
+    try:
+        source_chat_id = int(parts[1])
+        source_message_id = int(parts[2])
+    except ValueError:
+        await callback.answer("Не удалось определить пост.")
+        return
+
+    auto_in_path_channel_id = await get_auto_in_path_channel_id()
+    lead_price_range = "Авто в пути" if source_chat_id == auto_in_path_channel_id else "Пост из группы"
+    lead_message_text = _build_post_like_lead_text(
+        callback.message,
+        source_chat_id,
+        source_message_id,
+    )
+
+    await state.set_state(LeadStates.waiting_contact)
+    await state.update_data(
+        pending_lead_action="post_like",
+        pending_lead_message_text=lead_message_text,
+        pending_lead_price_range=lead_price_range,
+        pending_back_target="home",
+    )
+    await callback.message.answer(
+        LEAD_CONTACT_REQUEST_TEXT,
+        reply_markup=get_contact_request_keyboard(),
+    )
     await callback.answer()
 
 
@@ -112,11 +179,14 @@ async def collect_contact(message: types.Message, state: FSMContext, bot: Bot):
     phone = match.group(1).replace(" ", "") if match else None
     name = re.sub(r"(\+?\d[\d\-\s\(\)]{7,}\d)", "", text).strip(" ,.-")
 
-    if not phone or not name:
+    if phone and not name:
+        name = (message.from_user.full_name if message.from_user else "").strip()
+
+    if not phone:
         await message.answer(
-            "Не удалось распознать данные. Формат: Имя +79991234567\n"
-            "Или нажмите кнопку «📱 Отправить номер».",
-            reply_markup=get_contact_request_keyboard(),
+            "Не удалось распознать номер.\n"
+            "Отправьте номер в формате +79991234567\n"
+            "или сообщением вида: Иван +79991234567."
         )
         return
 

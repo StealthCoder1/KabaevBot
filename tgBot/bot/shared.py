@@ -1,4 +1,5 @@
 import asyncio
+import os
 import random
 import re
 from collections import defaultdict
@@ -17,8 +18,11 @@ from db.connect import async_session
 from db import models as db_models
 from log import logger
 from tgBot.catalogs import (
+    _auto_category_has_countries,
     _get_auto_category_label,
+    _get_auto_country_title,
     _get_auto_model_description_text,
+    _get_auto_model_country_id,
     _get_auto_model_lead_message,
     _get_auto_model_placeholder_text,
     _get_auto_model_photo_path,
@@ -35,13 +39,11 @@ from tgBot.catalogs import (
 )
 from tgBot.keyboards import (
     get_admin_keyboard,
+    get_auto_countries_keyboard,
+    get_auto_country_models_keyboard,
+    get_auto_in_path_post_keyboard,
     get_auto_model_actions_keyboard,
     get_best_deals_keyboard,
-    get_budget_12_15_models_keyboard,
-    get_budget_15_20_models_keyboard,
-    get_budget_20_30_models_keyboard,
-    get_budget_30k_plus_models_keyboard,
-    get_budget_9_12_models_keyboard,
     get_contact_request_keyboard,
     get_electric_models_keyboard,
     get_guarantees_keyboard,
@@ -93,6 +95,9 @@ DEFAULT_AUTO_IN_PATH_CHANNEL_ID = -1003706573371
 DEFAULT_AUTO_IN_PATH_CHANNEL_TITLE = "Авто в пути"
 LEADS_CHANNEL_CODE = "leads_target"
 DEFAULT_LEADS_CHANNEL_TITLE = "Лиды"
+POST_LIKE_PROMPT_TEXT = "Если пост понравился, нажмите кнопку ниже."
+AUTO_IN_PATH_BROWSER_PROMPT_TEXT = "Выберите, что сделать с этим вариантом."
+AUTO_IN_PATH_STICKER_ENV_NAME = "AUTO_IN_PATH_STICKER_ID"
 
 
 def _pick_max_profit_lot(exclude_id: str | None = None) -> dict[str, str]:
@@ -146,10 +151,19 @@ async def _show_auto_model_card(
     *,
     category_id: str,
     model_id: str,
+    country_id: str | None = None,
+    back_callback_data: str | None = None,
+    source_token: str = "",
 ) -> None:
-    text = _get_auto_model_description_text(category_id, model_id)
-    reply_markup = get_auto_model_actions_keyboard(category_id, model_id)
-    photo_path = _get_auto_model_photo_path(category_id, model_id)
+    text = _get_auto_model_description_text(category_id, model_id, country_id=country_id)
+    reply_markup = get_auto_model_actions_keyboard(
+        category_id,
+        model_id,
+        country_id=country_id,
+        back_callback_data=back_callback_data,
+        source_token=source_token,
+    )
+    photo_path = _get_auto_model_photo_path(category_id, model_id, country_id=country_id)
     if photo_path:
         path_obj = Path(photo_path)
         if not path_obj.is_absolute():
@@ -164,7 +178,10 @@ async def _show_auto_model_card(
                 )
                 return
             except Exception as exc:
-                logger.error(f"Не удалось отправить фото карточки авто {category_id}/{model_id}: {exc}")
+                logger.error(
+                    f"Не удалось отправить фото карточки авто {category_id}/{country_id or '-'}"
+                    f"/{model_id}: {exc}"
+                )
 
     await callback.message.answer(text, reply_markup=reply_markup)
 
@@ -524,7 +541,7 @@ async def save_auto_in_transit_post(message: types.Message) -> None:
             await session.rollback()
 
 
-async def get_auto_in_transit_copy_batches() -> list[list[int]]:
+async def get_auto_in_transit_copy_batches(*, newest_first: bool = False) -> list[list[int]]:
     if AutoInTransitPost is None:
         return []
 
@@ -556,6 +573,9 @@ async def get_auto_in_transit_copy_batches() -> list[list[int]]:
         batches.append([current.message_id])
         i += 1
 
+    if newest_first:
+        batches.reverse()
+
     return batches
 
 
@@ -586,10 +606,18 @@ def _copied_message_id(value) -> int | None:
         return None
 
 
-async def _attach_post_actions_keyboard_to_message(bot: Bot, user_id: int, copied_message) -> None:
+async def _attach_post_actions_keyboard_to_message(
+    bot: Bot,
+    user_id: int,
+    copied_message,
+    source_chat_id: int,
+    source_message_id: int,
+    *,
+    log_failures: bool = True,
+) -> bool:
     copied_id = _copied_message_id(copied_message)
     if copied_id is None:
-        return
+        return False
 
     last_exc: Exception | None = None
     for delay in (0.0, 0.15, 0.35, 0.7):
@@ -599,15 +627,86 @@ async def _attach_post_actions_keyboard_to_message(bot: Bot, user_id: int, copie
             await bot.edit_message_reply_markup(
                 chat_id=user_id,
                 message_id=copied_id,
-                reply_markup=get_post_actions_keyboard(),
+                reply_markup=get_post_actions_keyboard(source_chat_id, source_message_id),
+            )
+            return True
+        except Exception as exc:
+            last_exc = exc
+
+    if log_failures:
+        logger.warning(
+            f"Не удалось добавить кнопку к посту авто в пути пользователю {user_id}, "
+            f"message_id={copied_id}: {last_exc}"
+        )
+    return False
+
+
+async def _send_post_actions_prompt(
+    bot: Bot,
+    user_id: int,
+    source_chat_id: int,
+    source_message_id: int,
+    *,
+    reply_to_message_id: int | None = None,
+) -> None:
+    try:
+        await bot.send_message(
+            chat_id=user_id,
+            text=POST_LIKE_PROMPT_TEXT,
+            reply_markup=get_post_actions_keyboard(source_chat_id, source_message_id),
+            reply_to_message_id=reply_to_message_id,
+            allow_sending_without_reply=True,
+        )
+    except Exception as exc:
+        logger.warning(
+            f"Не удалось отправить кнопку для поста авто в пути пользователю {user_id}, "
+            f"source_message_id={source_message_id}: {exc}"
+        )
+
+
+async def _send_optional_auto_in_path_sticker(bot: Bot, user_id: int) -> None:
+    sticker_id = os.getenv(AUTO_IN_PATH_STICKER_ENV_NAME, "").strip()
+    if not sticker_id:
+        return
+
+    try:
+        await bot.send_sticker(chat_id=user_id, sticker=sticker_id)
+    except Exception as exc:
+        logger.warning(f"Не удалось отправить стикер авто в пути пользователю {user_id}: {exc}")
+
+
+async def _send_auto_in_path_actions_prompt(
+    bot: Bot,
+    user_id: int,
+    source_chat_id: int,
+    source_message_id: int,
+    *,
+    next_post_index: int | None,
+    reply_to_message_id: int | None = None,
+) -> None:
+    last_exc: Exception | None = None
+    reply_targets = [reply_to_message_id] if reply_to_message_id is not None else []
+    reply_targets.append(None)
+    for current_reply_to in reply_targets:
+        try:
+            await bot.send_message(
+                chat_id=user_id,
+                text=AUTO_IN_PATH_BROWSER_PROMPT_TEXT,
+                reply_markup=get_auto_in_path_post_keyboard(
+                    source_chat_id,
+                    source_message_id,
+                    next_post_index=next_post_index,
+                ),
+                reply_to_message_id=current_reply_to,
+                allow_sending_without_reply=True,
             )
             return
         except Exception as exc:
             last_exc = exc
 
     logger.warning(
-        f"Не удалось добавить кнопку к посту авто в пути пользователю {user_id}, "
-        f"message_id={copied_id}: {last_exc}"
+        f"Не удалось отправить кнопки для просмотра авто в пути пользователю {user_id}, "
+        f"source_message_id={source_message_id}: {last_exc}"
     )
 
 
@@ -665,6 +764,146 @@ async def clear_auto_in_transit_posts_db(channel_id_value: int | None = None) ->
         return len(rows)
 
 
+async def send_auto_in_transit_post_to_user(
+    bot: Bot,
+    user_id: int,
+    *,
+    batch_index: int = 0,
+    with_sticker: bool = True,
+    _attempt: int = 0,
+) -> bool:
+    source_channel_id = await get_auto_in_path_channel_id()
+    if source_channel_id is None or batch_index < 0:
+        return False
+
+    batches = await get_auto_in_transit_copy_batches(newest_first=True)
+    if batch_index >= len(batches):
+        return False
+
+    if with_sticker:
+        await _send_optional_auto_in_path_sticker(bot, user_id)
+
+    message_ids = sorted(batches[batch_index])
+    source_message_id = message_ids[0]
+    next_post_index = batch_index + 1 if batch_index + 1 < len(batches) else None
+    reply_markup = get_auto_in_path_post_keyboard(
+        source_channel_id,
+        source_message_id,
+        next_post_index=next_post_index,
+    )
+
+    if len(message_ids) == 1:
+        message_id = source_message_id
+        try:
+            await bot.copy_message(
+                chat_id=user_id,
+                from_chat_id=source_channel_id,
+                message_id=message_id,
+                reply_markup=reply_markup,
+            )
+            return True
+        except Exception as exc:
+            if _looks_like_missing_source_message(exc):
+                removed = await _delete_auto_in_transit_post_records(source_channel_id, [message_id])
+                logger.info(
+                    f"Удалён отсутствующий пост авто в пути из БД: channel_id={source_channel_id}, "
+                    f"message_id={message_id}, removed={removed}"
+                )
+                if _attempt < 2:
+                    return await send_auto_in_transit_post_to_user(
+                        bot,
+                        user_id,
+                        batch_index=batch_index,
+                        with_sticker=False,
+                        _attempt=_attempt + 1,
+                    )
+            else:
+                logger.error(
+                    f"Не удалось скопировать последний пост авто в пути пользователю {user_id}, "
+                    f"message_id={message_id}: {exc}"
+                )
+            return False
+
+    try:
+        copied_messages = await bot.copy_messages(
+            chat_id=user_id,
+            from_chat_id=source_channel_id,
+            message_ids=message_ids,
+        )
+        reply_to_message_id = next(
+            (
+                copied_id
+                for copied_id in (_copied_message_id(item) for item in copied_messages)
+                if copied_id is not None
+            ),
+            None,
+        )
+        await _send_auto_in_path_actions_prompt(
+            bot,
+            user_id,
+            source_channel_id,
+            source_message_id,
+            next_post_index=next_post_index,
+            reply_to_message_id=reply_to_message_id,
+        )
+        return True
+    except Exception as exc:
+        logger.warning(
+            f"Ошибка отправки медиа-поста авто в пути пользователю {user_id}, пробую по одному: {exc}"
+        )
+
+    first_copied_message = None
+    batch_sent = False
+    missing_message_ids: list[int] = []
+    for message_id in message_ids:
+        try:
+            copied_message = await bot.copy_message(
+                chat_id=user_id,
+                from_chat_id=source_channel_id,
+                message_id=message_id,
+            )
+            if first_copied_message is None:
+                first_copied_message = copied_message
+            batch_sent = True
+        except Exception as exc:
+            if _looks_like_missing_source_message(exc):
+                missing_message_ids.append(message_id)
+            else:
+                logger.error(
+                    f"Не удалось скопировать сообщение авто в пути пользователю {user_id}, "
+                    f"message_id={message_id}: {exc}"
+                )
+        await asyncio.sleep(0.03)
+
+    if missing_message_ids:
+        removed = await _delete_auto_in_transit_post_records(source_channel_id, missing_message_ids)
+        logger.info(
+            f"Удалены отсутствующие сообщения авто в пути из БД: channel_id={source_channel_id}, "
+            f"message_ids={missing_message_ids}, removed={removed}"
+        )
+        if not batch_sent and _attempt < 2:
+            return await send_auto_in_transit_post_to_user(
+                bot,
+                user_id,
+                batch_index=batch_index,
+                with_sticker=False,
+                _attempt=_attempt + 1,
+            )
+
+    if not batch_sent:
+        return False
+
+    await _send_auto_in_path_actions_prompt(
+        bot,
+        user_id,
+        source_channel_id,
+        source_message_id,
+        next_post_index=next_post_index,
+        reply_to_message_id=_copied_message_id(first_copied_message),
+    )
+    return True
+
+
 async def send_auto_in_transit_posts_to_user(bot: Bot, user_id: int) -> int:
     source_channel_id = await get_auto_in_path_channel_id()
     if source_channel_id is None:
@@ -676,26 +915,86 @@ async def send_auto_in_transit_posts_to_user(bot: Bot, user_id: int) -> int:
 
     sent_batches = 0
     for message_ids in batches:
+        source_message_ids = sorted(message_ids)
+        source_message_id = source_message_ids[0]
+
+        if len(source_message_ids) == 1:
+            message_id = source_message_id
+            try:
+                await bot.copy_message(
+                    chat_id=user_id,
+                    from_chat_id=source_channel_id,
+                    message_id=message_id,
+                    reply_markup=get_post_actions_keyboard(source_channel_id, message_id),
+                )
+                sent_batches += 1
+            except Exception as exc:
+                if _looks_like_missing_source_message(exc):
+                    removed = await _delete_auto_in_transit_post_records(source_channel_id, [message_id])
+                    logger.info(
+                        f"Удалён отсутствующий пост авто в пути из БД: channel_id={source_channel_id}, "
+                        f"message_id={message_id}, removed={removed}"
+                    )
+                else:
+                    logger.error(
+                        f"Не удалось скопировать сообщение авто в пути пользователю {user_id}, "
+                        f"message_id={message_id}: {exc}"
+                    )
+            await asyncio.sleep(0.05)
+            continue
+
         try:
             copied_messages = await bot.copy_messages(
                 chat_id=user_id,
                 from_chat_id=source_channel_id,
-                message_ids=sorted(message_ids),
+                message_ids=source_message_ids,
             )
             sent_batches += 1
+            attached = False
+            for copied_message in copied_messages:
+                attached = await _attach_post_actions_keyboard_to_message(
+                    bot,
+                    user_id,
+                    copied_message,
+                    source_channel_id,
+                    source_message_id,
+                    log_failures=False,
+                )
+                if attached:
+                    break
+
+            if not attached:
+                reply_to_message_id = next(
+                    (
+                        copied_id
+                        for copied_id in (_copied_message_id(item) for item in copied_messages)
+                        if copied_id is not None
+                    ),
+                    None,
+                )
+                await _send_post_actions_prompt(
+                    bot,
+                    user_id,
+                    source_channel_id,
+                    source_message_id,
+                    reply_to_message_id=reply_to_message_id,
+                )
         except Exception as exc:
             logger.warning(
                 f"Ошибка batch copy авто в пути пользователю {user_id}, пробую по одному: {exc}"
             )
-            last_copied_message = None
-            for message_id in sorted(message_ids):
+            first_copied_message = None
+            batch_sent = False
+            for message_id in source_message_ids:
                 try:
                     copied_message = await bot.copy_message(
                         chat_id=user_id,
                         from_chat_id=source_channel_id,
                         message_id=message_id,
                     )
-                    last_copied_message = copied_message
+                    if first_copied_message is None:
+                        first_copied_message = copied_message
+                    batch_sent = True
                 except Exception as single_exc:
                     if _looks_like_missing_source_message(single_exc):
                         removed = await _delete_auto_in_transit_post_records(source_channel_id, [message_id])
@@ -709,6 +1008,27 @@ async def send_auto_in_transit_posts_to_user(bot: Bot, user_id: int) -> int:
                             f"message_id={message_id}: {single_exc}"
                         )
                 await asyncio.sleep(0.03)
+
+            if batch_sent:
+                sent_batches += 1
+                attached = False
+                if first_copied_message is not None:
+                    attached = await _attach_post_actions_keyboard_to_message(
+                        bot,
+                        user_id,
+                        first_copied_message,
+                        source_channel_id,
+                        source_message_id,
+                        log_failures=False,
+                    )
+                if not attached:
+                    await _send_post_actions_prompt(
+                        bot,
+                        user_id,
+                        source_channel_id,
+                        source_message_id,
+                        reply_to_message_id=_copied_message_id(first_copied_message),
+                    )
         await asyncio.sleep(0.05)
 
     return sent_batches

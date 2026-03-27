@@ -105,6 +105,7 @@ async def handle_media_group(message: types.Message, user_ids, bot: Bot):
         return
 
     media_cache[message.media_group_id] = media_messages
+    source_message_id = min(msg.message_id for msg in media_messages)
 
     media_to_send = [
         types.InputMediaPhoto(media=msg.photo[-1].file_id, caption=msg.caption or "")
@@ -115,7 +116,36 @@ async def handle_media_group(message: types.Message, user_ids, bot: Bot):
 
     for user_id in user_ids:
         try:
-            await bot.send_media_group(chat_id=user_id, media=media_to_send)
+            sent_messages = await bot.send_media_group(chat_id=user_id, media=media_to_send)
+            attached = False
+            for sent_message in sent_messages:
+                attached = await _attach_post_actions_keyboard_to_message(
+                    bot,
+                    user_id,
+                    sent_message,
+                    message.chat.id,
+                    source_message_id,
+                    log_failures=False,
+                )
+                if attached:
+                    break
+
+            if not attached:
+                reply_to_message_id = next(
+                    (
+                        sent_message.message_id
+                        for sent_message in sent_messages
+                        if getattr(sent_message, "message_id", None) is not None
+                    ),
+                    None,
+                )
+                await _send_post_actions_prompt(
+                    bot,
+                    user_id,
+                    message.chat.id,
+                    source_message_id,
+                    reply_to_message_id=reply_to_message_id,
+                )
         except Exception as exc:
             logger.error(f"Ошибка отправки медиа-группы пользователю {user_id}: {exc}")
 
@@ -129,23 +159,27 @@ async def handle_single_message(message: types.Message, user_ids, bot: Bot):
 
 
 async def send_message_by_type(bot: Bot, user_id, message: types.Message):
+    reply_markup = get_post_actions_keyboard(message.chat.id, message.message_id)
     if message.photo:
         await bot.send_photo(
             chat_id=user_id,
             photo=message.photo[-1].file_id,
             caption=message.caption or "",
+            reply_markup=reply_markup,
         )
     elif message.video:
         await bot.send_video(
             chat_id=user_id,
             video=message.video.file_id,
             caption=message.caption or "",
+            reply_markup=reply_markup,
         )
     elif message.text:
-        await bot.send_message(chat_id=user_id, text=message.text)
+        await bot.send_message(chat_id=user_id, text=message.text, reply_markup=reply_markup)
     else:
         await bot.copy_message(
             chat_id=user_id,
             from_chat_id=message.chat.id,
             message_id=message.message_id,
+            reply_markup=reply_markup,
         )

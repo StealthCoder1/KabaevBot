@@ -104,35 +104,53 @@ def _get_auto_category_label(category_id: str) -> str:
     }
     return fallback_labels.get(category_id, category_id)
 
-def _get_auto_models_keyboard(
-    category_id: str,
-    back_callback_data: str = "lead:auto_pick",
-) -> types.InlineKeyboardMarkup | None:
+def _extract_auto_models(container: dict | None) -> list[dict]:
+    if not isinstance(container, dict):
+        return []
+    models = container.get("models", [])
+    if not isinstance(models, list):
+        return []
+    return [item for item in models if isinstance(item, dict)]
+
+def _get_auto_category_models(category_id: str) -> list[dict]:
+    return _extract_auto_models(_get_auto_category_config(category_id))
+
+def _get_auto_category_countries(category_id: str) -> list[dict]:
     category = _get_auto_category_config(category_id)
     if not category:
-        return None
+        return []
+    countries = category.get("countries", [])
+    if not isinstance(countries, list):
+        return []
+    return [item for item in countries if isinstance(item, dict)]
 
-    callback_prefix = str(category.get("callback_prefix", "")).strip()
-    models = category.get("models", [])
-    if not callback_prefix or not isinstance(models, list) or not models:
-        return None
+def _auto_category_has_countries(category_id: str) -> bool:
+    return bool(_get_auto_category_countries(category_id))
 
-    kb = InlineKeyboardBuilder()
-    items_count = 0
-    for model in models:
-        if not isinstance(model, dict):
-            continue
-        model_id = str(model.get("id", "")).strip()
-        title = str(model.get("title", "")).strip()
-        if not model_id or not title:
-            continue
-        kb.button(text=title, callback_data=f"{callback_prefix}:{model_id}")
-        items_count += 1
+def _get_auto_country_config(category_id: str, country_id: str) -> dict | None:
+    for item in _get_auto_category_countries(category_id):
+        if str(item.get("id", "")).strip() == country_id:
+            return item
+    return None
 
-    if items_count == 0:
-        return None
+def _get_auto_country_title(category_id: str, country_id: str) -> str | None:
+    country = _get_auto_country_config(category_id, country_id)
+    if country:
+        title = str(country.get("title", "")).strip()
+        if title:
+            return title
 
-    layout = category.get("layout", [])
+    fallback_titles = {
+        "usa": "США",
+        "china": "Китай",
+        "korea": "Корея",
+    }
+    return fallback_titles.get(country_id)
+
+def _get_auto_country_models(category_id: str, country_id: str) -> list[dict]:
+    return _extract_auto_models(_get_auto_country_config(category_id, country_id))
+
+def _resolve_keyboard_rows(layout: object, items_count: int) -> list[int]:
     rows: list[int] = []
     if isinstance(layout, list):
         for value in layout:
@@ -157,41 +175,162 @@ def _get_auto_models_keyboard(
             rows = [1] * items_count
     else:
         rows = [1] * items_count
+    return rows
+
+def _append_source_token(callback_data: str, source_token: str = "") -> str:
+    if not source_token:
+        return callback_data
+    return f"{callback_data}:{source_token}"
+
+def _get_auto_countries_keyboard(
+    category_id: str,
+    back_callback_data: str = "lead:auto_pick",
+    source_token: str = "",
+) -> types.InlineKeyboardMarkup | None:
+    countries = _get_auto_category_countries(category_id)
+    if not countries:
+        return None
+
+    kb = InlineKeyboardBuilder()
+    rows: list[int] = []
+    items_count = 0
+    for country in countries:
+        country_id = str(country.get("id", "")).strip()
+        title = str(country.get("title", "")).strip()
+        if not country_id or not title:
+            continue
+        kb.button(
+            text=title,
+            callback_data=_append_source_token(
+                f"price_country:{category_id}:{country_id}",
+                source_token,
+            ),
+        )
+        rows.append(1)
+        items_count += 1
+
+    if items_count == 0:
+        return None
+
+    kb.button(text=BACK_BUTTON_TEXT, callback_data=back_callback_data)
+    kb.adjust(*rows, 1)
+    return kb.as_markup()
+
+def _get_auto_models_keyboard(
+    category_id: str,
+    back_callback_data: str = "lead:auto_pick",
+    country_id: str | None = None,
+    source_token: str = "",
+) -> types.InlineKeyboardMarkup | None:
+    category = _get_auto_category_config(category_id)
+    if not category:
+        return None
+
+    callback_prefix = ""
+    callback_builder = None
+    layout = category.get("layout", [])
+    if country_id:
+        country = _get_auto_country_config(category_id, country_id)
+        if not country:
+            return None
+        models = _get_auto_country_models(category_id, country_id)
+        layout = country.get("layout", [])
+        callback_builder = lambda model_id: _append_source_token(
+            f"auto_model_pick:{category_id}:{country_id}:{model_id}",
+            source_token,
+        )
+    else:
+        if _auto_category_has_countries(category_id):
+            return None
+        callback_prefix = str(category.get("callback_prefix", "")).strip()
+        models = _get_auto_category_models(category_id)
+        if callback_prefix:
+            callback_builder = lambda model_id: f"{callback_prefix}:{model_id}"
+
+    if callback_builder is None or not models:
+        return None
+
+    kb = InlineKeyboardBuilder()
+    items_count = 0
+    for model in models:
+        model_id = str(model.get("id", "")).strip()
+        title = str(model.get("title", "")).strip()
+        if not model_id or not title:
+            continue
+        kb.button(text=title, callback_data=callback_builder(model_id))
+        items_count += 1
+
+    if items_count == 0:
+        return None
+
+    rows = _resolve_keyboard_rows(layout, items_count)
 
     kb.button(text=BACK_BUTTON_TEXT, callback_data=back_callback_data)
     kb.adjust(*rows, 1)
 
     return kb.as_markup()
 
-def _get_auto_model_config(category_id: str, model_id: str) -> dict | None:
-    category = _get_auto_category_config(category_id)
-    if not category:
-        return None
-
-    models = category.get("models", [])
-    if not isinstance(models, list):
-        return None
-
+def _find_model_by_id(models: list[dict], model_id: str) -> dict | None:
     for model in models:
-        if not isinstance(model, dict):
-            continue
         if str(model.get("id", "")).strip() == model_id:
             return model
     return None
 
-def _get_auto_model_title(category_id: str, model_id: str) -> str | None:
-    model = _get_auto_model_config(category_id, model_id)
+def _get_auto_model_country_id(category_id: str, model_id: str) -> str | None:
+    for country in _get_auto_category_countries(category_id):
+        country_id = str(country.get("id", "")).strip()
+        if not country_id:
+            continue
+        if _find_model_by_id(_extract_auto_models(country), model_id):
+            return country_id
+    return None
+
+def _get_auto_model_config(
+    category_id: str,
+    model_id: str,
+    country_id: str | None = None,
+) -> dict | None:
+    if country_id:
+        return _find_model_by_id(_get_auto_country_models(category_id, country_id), model_id)
+
+    model = _find_model_by_id(_get_auto_category_models(category_id), model_id)
+    if model:
+        return model
+
+    return _find_model_by_id(
+        [
+            model
+            for country in _get_auto_category_countries(category_id)
+            for model in _extract_auto_models(country)
+        ],
+        model_id,
+    )
+
+def _get_auto_model_title(
+    category_id: str,
+    model_id: str,
+    country_id: str | None = None,
+) -> str | None:
+    model = _get_auto_model_config(category_id, model_id, country_id=country_id)
     if not model:
         return None
     title = str(model.get("title", "")).strip()
     return title or None
 
-def _get_auto_model_lead_message(category_id: str, model_id: str) -> str | None:
+def _get_auto_model_lead_message(
+    category_id: str,
+    model_id: str,
+    country_id: str | None = None,
+) -> str | None:
     # lead_message in JSON is deprecated: always use model title
-    return _get_auto_model_title(category_id, model_id)
+    return _get_auto_model_title(category_id, model_id, country_id=country_id)
 
-def _get_auto_model_description_text(category_id: str, model_id: str) -> str:
-    model = _get_auto_model_config(category_id, model_id)
+def _get_auto_model_description_text(
+    category_id: str,
+    model_id: str,
+    country_id: str | None = None,
+) -> str:
+    model = _get_auto_model_config(category_id, model_id, country_id=country_id)
     if not model:
         return _get_auto_model_placeholder_text()
 
@@ -199,11 +338,15 @@ def _get_auto_model_description_text(category_id: str, model_id: str) -> str:
     if text.strip():
         return text
 
-    title = _get_auto_model_title(category_id, model_id) or model_id
+    title = _get_auto_model_title(category_id, model_id, country_id=country_id) or model_id
     return f"{title}\n\n{_get_auto_model_placeholder_text()}"
 
-def _get_auto_model_photo_path(category_id: str, model_id: str) -> str | None:
-    model = _get_auto_model_config(category_id, model_id)
+def _get_auto_model_photo_path(
+    category_id: str,
+    model_id: str,
+    country_id: str | None = None,
+) -> str | None:
+    model = _get_auto_model_config(category_id, model_id, country_id=country_id)
     if not model:
         return None
     value = str(model.get("photo_path", "")).strip()

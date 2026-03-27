@@ -1,6 +1,110 @@
 from tgBot.bot.shared import *
 
 
+AUTO_PICK_SOURCE_TO_TOKEN = {
+    "risks": "r",
+    "quick_main_auction": "qa",
+    "quick_main_delivery": "qd",
+    "quick_main_credit": "qc",
+    "quick_main_insurance": "qi",
+    "quick_main_hidden_damage": "qhd",
+}
+AUTO_PICK_TOKEN_TO_SOURCE = {token: source for source, token in AUTO_PICK_SOURCE_TO_TOKEN.items()}
+AUTO_BUDGET_HEADLINE_LABELS = {
+    "9_12k": "9–12k$",
+    "12_15k": "12–15k$",
+    "15_20k": "15–20k$",
+    "20_30k": "20–30k$",
+    "30k_plus_lux": "30k$+",
+}
+AUTO_BUDGET_MODELS_BODY = (
+    "👇 Выбирайте модель — и смотрите, за сколько мы реально\n"
+    "привозим такие авто нашим клиентам.\n"
+    "P.S. цены ниже рынка РБ до 40%\n\n"
+    "❕ Часто цена зависит от множества факторов и даже одна и\n"
+    "та же модель с одинаковым годом может стоить по-разному,\n"
+    "потому что:\n"
+    "1) степень повреждений\n"
+    "2) пробег\n"
+    "3) комплектации\n"
+    "Мы ориентируемся на статистику\n\n"
+    "Начнём? Жмите кнопку ниже 👇"
+)
+
+
+def _source_to_token(source: str) -> str:
+    return AUTO_PICK_SOURCE_TO_TOKEN.get(source, "")
+
+
+def _token_to_source(source_token: str) -> str:
+    return AUTO_PICK_TOKEN_TO_SOURCE.get(source_token, "")
+
+
+def _get_auto_pick_callback_data(source: str) -> str:
+    return f"lead:auto_pick:{source}" if source else "lead:auto_pick"
+
+
+def _get_price_callback_data(category_id: str, source: str = "") -> str:
+    return f"price:{category_id}:{source}" if source else f"price:{category_id}"
+
+
+def _get_price_country_callback_data(
+    category_id: str,
+    country_id: str,
+    source_token: str = "",
+) -> str:
+    callback_data = f"price_country:{category_id}:{country_id}"
+    if source_token:
+        callback_data = f"{callback_data}:{source_token}"
+    return callback_data
+
+
+def _get_auto_budget_intro_text(category_id: str, country_title: str | None = None) -> str:
+    label = AUTO_BUDGET_HEADLINE_LABELS.get(category_id, _get_auto_category_label(category_id))
+    headline = f"🔥 Лучшие авто в бюджете {label}"
+    if country_title:
+        headline = f"{headline} / {country_title}"
+    return f"{headline}\n{AUTO_BUDGET_MODELS_BODY}"
+
+
+async def _show_country_picker(
+    callback: types.CallbackQuery,
+    *,
+    category_id: str,
+    source: str = "",
+) -> None:
+    category_label = _get_auto_category_label(category_id)
+    await callback.message.answer(
+        f"🌍 Выберите страну для бюджета {category_label}",
+        reply_markup=get_auto_countries_keyboard(
+            category_id,
+            back_callback_data=_get_auto_pick_callback_data(source),
+            source_token=_source_to_token(source),
+        ),
+    )
+
+
+async def _show_legacy_budget_model_card(
+    callback: types.CallbackQuery,
+    *,
+    category_id: str,
+) -> None:
+    model_id = _extract_model_id(callback.data)
+    country_id = _get_auto_model_country_id(category_id, model_id)
+    back_callback_data = (
+        _get_price_country_callback_data(category_id, country_id)
+        if country_id
+        else _get_price_callback_data(category_id)
+    )
+    await _show_auto_model_card(
+        callback,
+        category_id=category_id,
+        country_id=country_id,
+        model_id=model_id,
+        back_callback_data=back_callback_data,
+    )
+
+
 @router.callback_query((F.data == "lead:auto_pick") | F.data.startswith("lead:auto_pick:"))
 async def auto_pick_callback(callback: types.CallbackQuery):
     await ensure_user_exists(callback.from_user)
@@ -25,123 +129,20 @@ async def auto_pick_callback(callback: types.CallbackQuery):
 
 
 @router.callback_query(F.data.startswith("price:"))
-async def price_range_callback(callback: types.CallbackQuery, bot: Bot):
+async def price_range_callback(callback: types.CallbackQuery):
     await ensure_user_exists(callback.from_user)
     parts = callback.data.split(":", maxsplit=2)
     payload = parts[1] if len(parts) > 1 else ""
     source = parts[2] if len(parts) == 3 else ""
-    auto_pick_callback_data = f"lead:auto_pick:{source}" if source else "lead:auto_pick"
+    auto_pick_callback_data = _get_auto_pick_callback_data(source)
+
     if payload == "cancel":
         await callback.message.answer("Выбор цены отменен.")
         await callback.answer()
         return
 
-    mapping = {
-        "9_12k": "9 000$ - 12 000$",
-        "12_15k": "12 000$ - 15 000$",
-        "15_20k": "15 000$ - 20 000$",
-        "20_30k": "20 000$ - 30 000$",
-        "30k_plus_lux": "30 000$+ (люкс)",
-        "best_deals": "Самые выгодные авто",
-        "electric": "Электрокары",
-        "up_to_1m": "до 1 млн",
-        "1_2m": "1-2 млн",
-        "2_3m": "2-3 млн",
-        "from_3m": "от 3 млн",
-    }
-    price_range = mapping.get(payload, payload)
-    if payload == "9_12k":
-        await callback.message.answer(
-            "🔥 Лучшие авто в бюджете 9–12k$\n"
-            "👇 Выбирайте модель — и смотрите, за сколько мы реально\n"
-            "привозим такие авто нашим клиентам.\n"
-            "P.S. цены ниже рынка РБ до 40%\n\n"
-            "❕ Часто цена зависит от множества факторов и даже одна и\n"
-            "та же модель с одинаковым годом может стоить по-разному,\n"
-            "потому что:\n"
-            "1) степень повреждений\n"
-            "2) пробег\n"
-            "3) комплектации\n"
-            "Мы ориентируемся на статистику\n\n"
-            "Начнём? Жмите кнопку ниже 👇",
-            reply_markup=get_budget_9_12_models_keyboard(back_callback_data=auto_pick_callback_data),
-        )
-        await callback.answer()
-        return
-
-    if payload == "12_15k":
-        await callback.message.answer(
-            "🔥 Лучшие авто в бюджете 12–15k$\n"
-            "👇 Выбирайте модель — и смотрите, за сколько мы реально\n"
-            "привозим такие авто нашим клиентам.\n"
-            "P.S. цены ниже рынка РБ до 40%\n\n"
-            "❕ Часто цена зависит от множества факторов и даже одна и\n"
-            "та же модель с одинаковым годом может стоить по-разному,\n"
-            "потому что:\n"
-            "1) степень повреждений\n"
-            "2) пробег\n"
-            "3) комплектации\n"
-            "Мы ориентируемся на статистику\n\n"
-            "Начнём? Жмите кнопку ниже 👇",
-            reply_markup=get_budget_12_15_models_keyboard(back_callback_data=auto_pick_callback_data),
-        )
-        await callback.answer()
-        return
-
-    if payload == "15_20k":
-        await callback.message.answer(
-            "🔥 Лучшие авто в бюджете 15–20k$\n"
-            "👇 Выбирайте модель — и смотрите, за сколько мы реально\n"
-            "привозим такие авто нашим клиентам.\n"
-            "P.S. цены ниже рынка РБ до 40%\n\n"
-            "❕ Часто цена зависит от множества факторов и даже одна и\n"
-            "та же модель с одинаковым годом может стоить по-разному,\n"
-            "потому что:\n"
-            "1) степень повреждений\n"
-            "2) пробег\n"
-            "3) комплектации\n"
-            "Мы ориентируемся на статистику\n\n"
-            "Начнём? Жмите кнопку ниже 👇",
-            reply_markup=get_budget_15_20_models_keyboard(back_callback_data=auto_pick_callback_data),
-        )
-        await callback.answer()
-        return
-
-    if payload == "20_30k":
-        await callback.message.answer(
-            "🔥 Лучшие авто в бюджете 20–30k$\n"
-            "👇 Выбирайте модель — и смотрите, за сколько мы реально\n"
-            "привозим такие авто нашим клиентам.\n"
-            "P.S. цены ниже рынка РБ до 40%\n\n"
-            "❕ Часто цена зависит от множества факторов и даже одна и\n"
-            "та же модель с одинаковым годом может стоить по-разному,\n"
-            "потому что:\n"
-            "1) степень повреждений\n"
-            "2) пробег\n"
-            "3) комплектации\n"
-            "Мы ориентируемся на статистику\n\n"
-            "Начнём? Жмите кнопку ниже 👇",
-            reply_markup=get_budget_20_30_models_keyboard(back_callback_data=auto_pick_callback_data),
-        )
-        await callback.answer()
-        return
-
-    if payload == "30k_plus_lux":
-        await callback.message.answer(
-            "🔥 Лучшие авто в бюджете 30k$+\n"
-            "👇 Выбирайте модель — и смотрите, за сколько мы реально\n"
-            "привозим такие авто нашим клиентам.\n"
-            "P.S. цены ниже рынка РБ до 40%\n\n"
-            "❕ Часто цена зависит от множества факторов и даже одна и\n"
-            "та же модель с одинаковым годом может стоить по-разному,\n"
-            "потому что:\n"
-            "1) степень повреждений\n"
-            "2) пробег\n"
-            "3) комплектации\n"
-            "Мы ориентируемся на статистику\n\n"
-            "Начнём? Жмите кнопку ниже 👇",
-            reply_markup=get_budget_30k_plus_models_keyboard(back_callback_data=auto_pick_callback_data),
-        )
+    if _auto_category_has_countries(payload):
+        await _show_country_picker(callback, category_id=payload, source=source)
         await callback.answer()
         return
 
@@ -189,58 +190,84 @@ async def price_range_callback(callback: types.CallbackQuery, bot: Bot):
     await callback.answer()
 
 
+@router.callback_query(F.data.startswith("price_country:"))
+async def price_country_callback(callback: types.CallbackQuery):
+    await ensure_user_exists(callback.from_user)
+    parts = callback.data.split(":")
+    if len(parts) not in (3, 4):
+        await callback.answer(_get_auto_model_placeholder_text())
+        return
+
+    _, category_id, country_id, *rest = parts
+    source_token = rest[0] if rest else ""
+    source = _token_to_source(source_token)
+    country_title = _get_auto_country_title(category_id, country_id) or country_id
+
+    await callback.message.answer(
+        _get_auto_budget_intro_text(category_id, country_title),
+        reply_markup=get_auto_country_models_keyboard(
+            category_id,
+            country_id,
+            back_callback_data=_get_price_callback_data(category_id, source),
+            source_token=source_token,
+        ),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("auto_model_pick:"))
+async def auto_model_pick_callback(callback: types.CallbackQuery):
+    await ensure_user_exists(callback.from_user)
+    parts = callback.data.split(":")
+    if len(parts) not in (4, 5):
+        await callback.answer(_get_auto_model_placeholder_text())
+        return
+
+    _, category_id, country_id, model_id, *rest = parts
+    source_token = rest[0] if rest else ""
+    await _show_auto_model_card(
+        callback,
+        category_id=category_id,
+        country_id=country_id,
+        model_id=model_id,
+        back_callback_data=_get_price_country_callback_data(category_id, country_id, source_token),
+        source_token=source_token,
+    )
+    await callback.answer()
+
+
 @router.callback_query(F.data.startswith("budget9_12:model:"))
 async def budget_9_12_model_callback(callback: types.CallbackQuery):
     await ensure_user_exists(callback.from_user)
-    await _show_auto_model_card(
-        callback,
-        category_id="9_12k",
-        model_id=_extract_model_id(callback.data),
-    )
+    await _show_legacy_budget_model_card(callback, category_id="9_12k")
     await callback.answer()
 
 
 @router.callback_query(F.data.startswith("budget12_15:model:"))
 async def budget_12_15_model_callback(callback: types.CallbackQuery):
     await ensure_user_exists(callback.from_user)
-    await _show_auto_model_card(
-        callback,
-        category_id="12_15k",
-        model_id=_extract_model_id(callback.data),
-    )
+    await _show_legacy_budget_model_card(callback, category_id="12_15k")
     await callback.answer()
 
 
 @router.callback_query(F.data.startswith("budget15_20:model:"))
 async def budget_15_20_model_callback(callback: types.CallbackQuery):
     await ensure_user_exists(callback.from_user)
-    await _show_auto_model_card(
-        callback,
-        category_id="15_20k",
-        model_id=_extract_model_id(callback.data),
-    )
+    await _show_legacy_budget_model_card(callback, category_id="15_20k")
     await callback.answer()
 
 
 @router.callback_query(F.data.startswith("budget20_30:model:"))
 async def budget_20_30_model_callback(callback: types.CallbackQuery):
     await ensure_user_exists(callback.from_user)
-    await _show_auto_model_card(
-        callback,
-        category_id="20_30k",
-        model_id=_extract_model_id(callback.data),
-    )
+    await _show_legacy_budget_model_card(callback, category_id="20_30k")
     await callback.answer()
 
 
 @router.callback_query(F.data.startswith("budget30k_plus:model:"))
 async def budget_30k_plus_model_callback(callback: types.CallbackQuery):
     await ensure_user_exists(callback.from_user)
-    await _show_auto_model_card(
-        callback,
-        category_id="30k_plus_lux",
-        model_id=_extract_model_id(callback.data),
-    )
+    await _show_legacy_budget_model_card(callback, category_id="30k_plus_lux")
     await callback.answer()
 
 
@@ -258,14 +285,29 @@ async def electric_model_callback(callback: types.CallbackQuery):
 @router.callback_query(F.data.startswith("auto_model:want:"))
 async def auto_model_want_callback(callback: types.CallbackQuery, state: FSMContext):
     await ensure_user_exists(callback.from_user)
-    parts = callback.data.split(":", maxsplit=3)
-    if len(parts) != 4:
+    parts = callback.data.split(":")
+    if len(parts) < 4:
         await callback.answer(_get_auto_model_placeholder_text())
         return
 
-    _, _, category_id, model_id = parts
-    model_title = _get_auto_model_lead_message(category_id, model_id) or _get_auto_model_title(category_id, model_id) or model_id
+    category_id = parts[2]
+    country_id = None
+
+    if _auto_category_has_countries(category_id) and len(parts) >= 5:
+        country_id = parts[3]
+        model_id = parts[4]
+    else:
+        model_id = parts[3]
+
+    model_title = (
+        _get_auto_model_lead_message(category_id, model_id, country_id=country_id)
+        or _get_auto_model_title(category_id, model_id, country_id=country_id)
+        or model_id
+    )
     price_range_label = _get_auto_category_label(category_id)
+    if country_id:
+        country_title = _get_auto_country_title(category_id, country_id) or country_id
+        price_range_label = f"{price_range_label} / {country_title}"
 
     await state.set_state(LeadStates.waiting_contact)
     await state.update_data(
@@ -274,7 +316,10 @@ async def auto_model_want_callback(callback: types.CallbackQuery, state: FSMCont
         pending_lead_price_range=price_range_label,
         pending_back_target="auto_pick",
     )
-    await callback.message.answer(LEAD_CONTACT_REQUEST_TEXT, reply_markup=get_contact_request_keyboard())
+    await callback.message.answer(
+        "📱 Отправьте номер телефона — и стартуем с подбором",
+        reply_markup=types.ReplyKeyboardRemove(),
+    )
     await callback.answer()
 
 
@@ -341,5 +386,3 @@ async def max_profit_next_callback(callback: types.CallbackQuery, state: FSMCont
     await ensure_user_exists(callback.from_user)
     await _send_random_max_profit_lot(callback, state, exclude_current=True)
     await callback.answer()
-
-

@@ -16,9 +16,10 @@ async def _send_home_menu(message: types.Message) -> None:
 
 
 @router.message(CommandStart())
-async def cmd_start(message: types.Message):
+async def cmd_start(message: types.Message, state: FSMContext):
     await ensure_user_exists(message.from_user)
-    await _send_home_menu(message)
+    await state.clear()
+    await message.answer(HOME_MENU_TEXT, reply_markup=get_start_keyboard())
 
 
 @router.message(StateFilter("*"), F.text == HOME_REPLY_BUTTON_TEXT)
@@ -273,4 +274,3 @@ async def leads_channel_save_handler(message: types.Message, state: FSMContext):
         parse_mode="Markdown",
         reply_markup=get_admin_keyboard(),
     )
-

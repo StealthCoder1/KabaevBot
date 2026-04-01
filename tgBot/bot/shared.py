@@ -8,9 +8,10 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from aiogram import Bot, Dispatcher, Router, F, types
+from aiogram.exceptions import TelegramAPIError, TelegramBadRequest, TelegramForbiddenError, TelegramNotFound
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 
 from Data.config import TG_BOT_TOKEN, ADMIN_TG_ID
@@ -98,6 +99,14 @@ DEFAULT_LEADS_CHANNEL_TITLE = "Лиды"
 POST_LIKE_PROMPT_TEXT = "Если пост понравился, нажмите кнопку ниже."
 AUTO_IN_PATH_BROWSER_PROMPT_TEXT = "Выберите, что сделать с этим вариантом."
 AUTO_IN_PATH_STICKER_ENV_NAME = "AUTO_IN_PATH_STICKER_ID"
+PERMANENT_USER_DELIVERY_ERROR_PATTERNS = (
+    "chat not found",
+    "user not found",
+    "bot was blocked by the user",
+    "bot can't initiate conversation with a user",
+    "user is deactivated",
+    "bots can't send messages to bots",
+)
 
 
 def _pick_max_profit_lot(exclude_id: str | None = None) -> dict[str, str]:
@@ -250,6 +259,52 @@ def _normalize_user_ids(rows) -> list[int]:
     return user_ids
 
 
+def _deduplicate_user_ids(user_ids: list[int]) -> list[int]:
+    unique_user_ids: list[int] = []
+    seen_user_ids: set[int] = set()
+    for user_id in user_ids:
+        if user_id in seen_user_ids:
+            continue
+        seen_user_ids.add(user_id)
+        unique_user_ids.append(user_id)
+    return unique_user_ids
+
+
+def _telegram_error_text(exc: Exception) -> str:
+    return str(exc).lower().strip()
+
+
+def _is_permanent_user_delivery_error(exc: Exception) -> bool:
+    error_text = _telegram_error_text(exc)
+    if any(pattern in error_text for pattern in PERMANENT_USER_DELIVERY_ERROR_PATTERNS):
+        return True
+    if isinstance(exc, TelegramNotFound):
+        return True
+    if isinstance(exc, TelegramBadRequest):
+        return "chat not found" in error_text or "user not found" in error_text
+    if isinstance(exc, TelegramForbiddenError):
+        return True
+    return isinstance(exc, TelegramAPIError) and "bots can't send messages to bots" in error_text
+
+
+async def get_known_user_ids(*, exclude_user_ids: set[int] | None = None) -> list[int]:
+    async with async_session() as session:
+        result = await session.execute(select(User.telegram_id))
+        user_ids = _normalize_user_ids(result.all())
+
+    unique_user_ids = _deduplicate_user_ids(user_ids)
+    if not exclude_user_ids:
+        return unique_user_ids
+    return [user_id for user_id in unique_user_ids if user_id not in exclude_user_ids]
+
+
+def get_configured_admin_ids(*, exclude_user_ids: set[int] | None = None) -> list[int]:
+    unique_admin_ids = _deduplicate_user_ids(list(ADMIN_TG_ID))
+    if not exclude_user_ids:
+        return unique_admin_ids
+    return [admin_id for admin_id in unique_admin_ids if admin_id not in exclude_user_ids]
+
+
 def _user_tg_id_db_value(telegram_id: int):
     try:
         column = User.__table__.columns["telegram_id"]
@@ -276,6 +331,9 @@ def is_admin(user_id: int) -> bool:
 
 
 async def ensure_user_exists(from_user: types.User) -> None:
+    if getattr(from_user, "is_bot", False):
+        return
+
     db_telegram_id = _user_tg_id_db_value(from_user.id)
     user_role = get_admin_role(from_user.id) or "user"
     first_name = getattr(from_user, "first_name", None)
@@ -313,11 +371,36 @@ async def ensure_user_exists(from_user: types.User) -> None:
         await session.commit()
 
 
+async def delete_user_by_telegram_id(telegram_id: int) -> int:
+    db_telegram_id = _user_tg_id_db_value(telegram_id)
+    async with async_session() as session:
+        result = await session.execute(delete(User).where(User.telegram_id == db_telegram_id))
+        await session.commit()
+        return int(result.rowcount or 0)
+
+
+async def handle_user_delivery_error(user_id: int, exc: Exception, *, action: str) -> bool:
+    if _is_permanent_user_delivery_error(exc):
+        removed = await delete_user_by_telegram_id(user_id)
+        logger.warning(
+            f"Не удалось {action} пользователю {user_id}: {exc}. Пользователь удалён из БД: removed={removed}"
+        )
+        return True
+
+    logger.error(f"Не удалось {action} пользователю {user_id}: {exc}")
+    return False
+
+
+def log_admin_delivery_error(admin_id: int, exc: Exception, *, action: str) -> None:
+    log_method = logger.warning if _is_permanent_user_delivery_error(exc) else logger.error
+    log_method(f"Не удалось {action} администратору {admin_id}: {exc}")
+
+
 async def sync_admin_users_from_config() -> None:
     if not ADMIN_TG_ID:
         return
     if AdminUser is None:
-        logger.info("Модель AdminUser отсутствует в db.models, sync_admin_users пропущен")
+        logger.debug("Модель AdminUser отсутствует в db.models, sync_admin_users пропущен")
         return
 
     desired_roles = {admin_id: get_admin_role(admin_id) or "admin" for admin_id in ADMIN_TG_ID}
@@ -1062,13 +1145,13 @@ async def notify_admins_new_lead(bot: Bot, lead: Lead) -> None:
         except Exception as exc:
             logger.error(f"Не удалось отправить лид в канал {leads_channel_id}: {exc}")
 
-    for admin_id in ADMIN_TG_ID:
+    for admin_id in get_configured_admin_ids(exclude_user_ids={bot.id}):
         if leads_channel_id is not None and admin_id == leads_channel_id:
             continue
         try:
             await bot.send_message(admin_id, full_text)
         except Exception as exc:
-            logger.error(f"Не удалось отправить лид администратору {admin_id}: {exc}")
+            log_admin_delivery_error(admin_id, exc, action="отправить лид")
 
 
 __all__ = [name for name in globals() if name != "__builtins__"]

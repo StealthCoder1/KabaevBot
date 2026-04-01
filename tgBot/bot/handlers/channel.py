@@ -14,10 +14,7 @@ async def _broadcast_source_post(message: types.Message, bot: Bot):
     if auto_in_path_channel_id and source_chat_id == auto_in_path_channel_id:
         await save_auto_in_transit_post(message)
 
-    async with async_session() as session:
-        result = await session.execute(select(User.telegram_id))
-        user_ids = _normalize_user_ids(result.all())
-
+    user_ids = await get_known_user_ids(exclude_user_ids={bot.id})
     if not user_ids:
         return
 
@@ -90,7 +87,7 @@ async def handle_sold_post(message: types.Message, user_ids, bot: Bot):
                         await bot.send_media_group(chat_id=user_id, media=media_to_send)
                 await bot.send_message(chat_id=user_id, text="Машина из поста ПРОДАНА!")
             except Exception as exc:
-                logger.error(f"Ошибка отправки уведомления пользователю {user_id}: {exc}")
+                await handle_user_delivery_error(user_id, exc, action="отправить уведомление о продаже")
 
         return True
     return False
@@ -147,7 +144,7 @@ async def handle_media_group(message: types.Message, user_ids, bot: Bot):
                     reply_to_message_id=reply_to_message_id,
                 )
         except Exception as exc:
-            logger.error(f"Ошибка отправки медиа-группы пользователю {user_id}: {exc}")
+            await handle_user_delivery_error(user_id, exc, action="отправить медиа-группу")
 
 
 async def handle_single_message(message: types.Message, user_ids, bot: Bot):
@@ -155,7 +152,7 @@ async def handle_single_message(message: types.Message, user_ids, bot: Bot):
         try:
             await send_message_by_type(bot, user_id, message)
         except Exception as exc:
-            logger.error(f"Ошибка отправки сообщения пользователю {user_id}: {exc}")
+            await handle_user_delivery_error(user_id, exc, action="отправить сообщение")
 
 
 async def send_message_by_type(bot: Bot, user_id, message: types.Message):

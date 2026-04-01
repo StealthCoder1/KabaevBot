@@ -14,7 +14,8 @@ from tgBot.bot.handlers import channel as _channel_handlers  # noqa: F401
 
 DAILY_BRAND_QUESTION_TEXT = "Какая марка авто наиболее интересна?"
 DAILY_BRAND_QUESTION_INTERVAL_SECONDS = 24 * 60 * 60
-POLLING_TIMEOUT_SECONDS = int(os.getenv("POLLING_TIMEOUT_SECONDS", "30"))
+# Keep long polling below common 30-second proxy/load-balancer idle limits.
+POLLING_TIMEOUT_SECONDS = int(os.getenv("POLLING_TIMEOUT_SECONDS", "25"))
 POLLING_BACKOFF_CONFIG = BackoffConfig(
     min_delay=float(os.getenv("POLLING_RETRY_MIN_DELAY_SECONDS", "1")),
     max_delay=float(os.getenv("POLLING_RETRY_MAX_DELAY_SECONDS", "30")),
@@ -24,10 +25,7 @@ POLLING_BACKOFF_CONFIG = BackoffConfig(
 
 
 async def _send_daily_brand_question(bot: Bot) -> None:
-    async with async_session() as session:
-        result = await session.execute(select(User.telegram_id))
-        user_ids = _normalize_user_ids(result.all())
-
+    user_ids = await get_known_user_ids(exclude_user_ids={bot.id})
     if not user_ids:
         return
 
@@ -35,7 +33,7 @@ async def _send_daily_brand_question(bot: Bot) -> None:
         try:
             await bot.send_message(chat_id=user_id, text=DAILY_BRAND_QUESTION_TEXT)
         except Exception as exc:
-            logger.error(f"Не удалось отправить ежедневную рассылку пользователю {user_id}: {exc}")
+            await handle_user_delivery_error(user_id, exc, action="отправить ежедневную рассылку")
         await asyncio.sleep(0.05)
 
 
@@ -71,11 +69,11 @@ async def start_bot():
     except Exception as exc:
         logger.error(f"Failed to create default channels config: {exc}")
 
-    for admin_id in ADMIN_TG_ID:
+    for admin_id in get_configured_admin_ids(exclude_user_ids={bot.id}):
         try:
             await bot.send_message(admin_id, "Бот запущен. Команда админки: /admin")
         except Exception as exc:
-            logger.info(f"Не удалось написать администратору {admin_id}: {exc}")
+            log_admin_delivery_error(admin_id, exc, action="написать")
 
     daily_broadcast_task = asyncio.create_task(_daily_brand_question_loop(bot))
     try:

@@ -1,3 +1,4 @@
+import copy
 import json
 from pathlib import Path
 
@@ -14,6 +15,7 @@ _auto_catalog_cache = None
 MAX_PROFIT_LOTS_PATH = Path(__file__).resolve().parent.parent / "Data" / "json" / "max_profit_lots.json"
 _max_profit_lots_cache = None
 
+
 def _load_moto_catalog() -> dict:
     global _moto_catalog_cache
     if _moto_catalog_cache is not None:
@@ -27,6 +29,7 @@ def _load_moto_catalog() -> dict:
 
     return _moto_catalog_cache
 
+
 def _load_auto_catalog() -> dict:
     global _auto_catalog_cache
     if _auto_catalog_cache is not None:
@@ -39,6 +42,7 @@ def _load_auto_catalog() -> dict:
         _auto_catalog_cache = {}
 
     return _auto_catalog_cache
+
 
 def _load_max_profit_lots() -> list[dict]:
     global _max_profit_lots_cache
@@ -56,6 +60,7 @@ def _load_max_profit_lots() -> list[dict]:
         _max_profit_lots_cache = []
 
     return _max_profit_lots_cache
+
 
 def _get_max_profit_lots() -> tuple[dict[str, str], ...]:
     lots: list[dict[str, str]] = []
@@ -76,16 +81,19 @@ def _get_max_profit_lots() -> tuple[dict[str, str], ...]:
         )
     return tuple(lots)
 
+
 def _auto_catalog_categories() -> list[dict]:
     data = _load_auto_catalog()
     categories = data.get("categories", []) if isinstance(data, dict) else []
     return [item for item in categories if isinstance(item, dict)]
+
 
 def _get_auto_category_config(category_id: str) -> dict | None:
     for item in _auto_catalog_categories():
         if str(item.get("id", "")).strip() == category_id:
             return item
     return None
+
 
 def _get_auto_category_label(category_id: str) -> str:
     category = _get_auto_category_config(category_id)
@@ -95,14 +103,13 @@ def _get_auto_category_label(category_id: str) -> str:
             return label
 
     fallback_labels = {
-        "9_12k": "9 000$ - 12 000$",
-        "12_15k": "12 000$ - 15 000$",
+        "10_15k": "10 000$ - 15 000$",
         "15_20k": "15 000$ - 20 000$",
         "20_30k": "20 000$ - 30 000$",
-        "30k_plus_lux": "30 000$+ (люкс)",
-        "electric": "Электрокары",
+        "30k_plus": "30 000$+",
     }
     return fallback_labels.get(category_id, category_id)
+
 
 def _extract_auto_models(container: dict | None) -> list[dict]:
     if not isinstance(container, dict):
@@ -112,8 +119,15 @@ def _extract_auto_models(container: dict | None) -> list[dict]:
         return []
     return [item for item in models if isinstance(item, dict)]
 
-def _get_auto_category_models(category_id: str) -> list[dict]:
-    return _extract_auto_models(_get_auto_category_config(category_id))
+
+def _extract_auto_engines(container: dict | None) -> list[dict]:
+    if not isinstance(container, dict):
+        return []
+    engines = container.get("engines", [])
+    if not isinstance(engines, list):
+        return []
+    return [item for item in engines if isinstance(item, dict)]
+
 
 def _get_auto_category_countries(category_id: str) -> list[dict]:
     category = _get_auto_category_config(category_id)
@@ -124,14 +138,17 @@ def _get_auto_category_countries(category_id: str) -> list[dict]:
         return []
     return [item for item in countries if isinstance(item, dict)]
 
+
 def _auto_category_has_countries(category_id: str) -> bool:
     return bool(_get_auto_category_countries(category_id))
+
 
 def _get_auto_country_config(category_id: str, country_id: str) -> dict | None:
     for item in _get_auto_category_countries(category_id):
         if str(item.get("id", "")).strip() == country_id:
             return item
     return None
+
 
 def _get_auto_country_title(category_id: str, country_id: str) -> str | None:
     country = _get_auto_country_config(category_id, country_id)
@@ -143,12 +160,61 @@ def _get_auto_country_title(category_id: str, country_id: str) -> str | None:
     fallback_titles = {
         "usa": "США",
         "china": "Китай",
-        "korea": "Корея",
+        "korea": "Южная Корея",
     }
     return fallback_titles.get(country_id)
 
-def _get_auto_country_models(category_id: str, country_id: str) -> list[dict]:
-    return _extract_auto_models(_get_auto_country_config(category_id, country_id))
+
+def _get_country_flag(country_id: str) -> str:
+    return {
+        "usa": "🇺🇸",
+        "china": "🇨🇳",
+        "korea": "🇰🇷",
+        "japan": "🇯🇵",
+    }.get(country_id, "")
+
+
+def _get_auto_country_engines(category_id: str, country_id: str) -> list[dict]:
+    return _extract_auto_engines(_get_auto_country_config(category_id, country_id))
+
+
+def _get_auto_engine_config(
+    category_id: str,
+    country_id: str,
+    engine_id: str,
+) -> dict | None:
+    for item in _get_auto_country_engines(category_id, country_id):
+        if str(item.get("id", "")).strip() == engine_id:
+            return item
+    return None
+
+
+def _get_auto_engine_title(
+    category_id: str,
+    country_id: str,
+    engine_id: str,
+) -> str | None:
+    engine = _get_auto_engine_config(category_id, country_id, engine_id)
+    if engine:
+        title = str(engine.get("title", "")).strip()
+        if title:
+            return title
+
+    fallback_titles = {
+        "gasoline": "Бензин",
+        "diesel": "Дизель",
+        "electric": "Электро",
+    }
+    return fallback_titles.get(engine_id)
+
+
+def _get_auto_engine_models(
+    category_id: str,
+    country_id: str,
+    engine_id: str,
+) -> list[dict]:
+    return _extract_auto_models(_get_auto_engine_config(category_id, country_id, engine_id))
+
 
 def _resolve_keyboard_rows(layout: object, items_count: int) -> list[int]:
     rows: list[int] = []
@@ -177,10 +243,12 @@ def _resolve_keyboard_rows(layout: object, items_count: int) -> list[int]:
         rows = [1] * items_count
     return rows
 
+
 def _append_source_token(callback_data: str, source_token: str = "") -> str:
     if not source_token:
         return callback_data
     return f"{callback_data}:{source_token}"
+
 
 def _get_auto_countries_keyboard(
     category_id: str,
@@ -193,62 +261,92 @@ def _get_auto_countries_keyboard(
 
     kb = InlineKeyboardBuilder()
     rows: list[int] = []
-    items_count = 0
     for country in countries:
         country_id = str(country.get("id", "")).strip()
         title = str(country.get("title", "")).strip()
         if not country_id or not title:
             continue
+        country_flag = _get_country_flag(country_id)
+        button_text = f"{country_flag} {title}".strip()
         kb.button(
-            text=title,
+            text=button_text,
             callback_data=_append_source_token(
                 f"price_country:{category_id}:{country_id}",
                 source_token,
             ),
         )
         rows.append(1)
-        items_count += 1
 
-    if items_count == 0:
+    if not rows:
         return None
 
     kb.button(text=BACK_BUTTON_TEXT, callback_data=back_callback_data)
     kb.adjust(*rows, 1)
     return kb.as_markup()
 
+
+def _get_auto_engines_keyboard(
+    category_id: str,
+    country_id: str,
+    back_callback_data: str = "lead:auto_pick",
+    source_token: str = "",
+) -> types.InlineKeyboardMarkup | None:
+    country = _get_auto_country_config(category_id, country_id)
+    if not country:
+        return None
+
+    engines = _get_auto_country_engines(category_id, country_id)
+    if not engines:
+        return None
+
+    kb = InlineKeyboardBuilder()
+    rows: list[int] = []
+    for engine in engines:
+        engine_id = str(engine.get("id", "")).strip()
+        title = str(engine.get("title", "")).strip()
+        if not engine_id or not title:
+            continue
+        kb.button(
+            text=title,
+            callback_data=_append_source_token(
+                f"price_engine:{category_id}:{country_id}:{engine_id}",
+                source_token,
+            ),
+        )
+        rows.append(1)
+
+    if not rows:
+        return None
+
+    kb.button(text=BACK_BUTTON_TEXT, callback_data=back_callback_data)
+    kb.adjust(*rows, 1)
+    return kb.as_markup()
+
+
 def _get_auto_models_keyboard(
     category_id: str,
     back_callback_data: str = "lead:auto_pick",
     country_id: str | None = None,
+    engine_id: str | None = None,
     source_token: str = "",
 ) -> types.InlineKeyboardMarkup | None:
     category = _get_auto_category_config(category_id)
-    if not category:
+    if not category or not country_id or not engine_id:
         return None
 
-    callback_prefix = ""
-    callback_builder = None
-    layout = category.get("layout", [])
-    if country_id:
-        country = _get_auto_country_config(category_id, country_id)
-        if not country:
-            return None
-        models = _get_auto_country_models(category_id, country_id)
-        layout = country.get("layout", [])
-        callback_builder = lambda model_id: _append_source_token(
-            f"auto_model_pick:{category_id}:{country_id}:{model_id}",
-            source_token,
-        )
-    else:
-        if _auto_category_has_countries(category_id):
-            return None
-        callback_prefix = str(category.get("callback_prefix", "")).strip()
-        models = _get_auto_category_models(category_id)
-        if callback_prefix:
-            callback_builder = lambda model_id: f"{callback_prefix}:{model_id}"
-
-    if callback_builder is None or not models:
+    country = _get_auto_country_config(category_id, country_id)
+    if not country:
         return None
+
+    engine = _get_auto_engine_config(category_id, country_id, engine_id)
+    if not engine:
+        return None
+
+    models = _get_auto_engine_models(category_id, country_id, engine_id)
+    if not models:
+        return None
+
+    layout = engine.get("layout", country.get("layout", category.get("layout", [])))
 
     kb = InlineKeyboardBuilder()
     items_count = 0
@@ -257,80 +355,129 @@ def _get_auto_models_keyboard(
         title = str(model.get("title", "")).strip()
         if not model_id or not title:
             continue
-        kb.button(text=title, callback_data=callback_builder(model_id))
+        kb.button(
+            text=title,
+            callback_data=_append_source_token(
+                f"auto_model_pick:{category_id}:{country_id}:{engine_id}:{model_id}",
+                source_token,
+            ),
+        )
         items_count += 1
 
     if items_count == 0:
         return None
 
     rows = _resolve_keyboard_rows(layout, items_count)
-
     kb.button(text=BACK_BUTTON_TEXT, callback_data=back_callback_data)
     kb.adjust(*rows, 1)
-
     return kb.as_markup()
+
 
 def _find_model_by_id(models: list[dict], model_id: str) -> dict | None:
     for model in models:
         if str(model.get("id", "")).strip() == model_id:
-            return model
+            return copy.deepcopy(model)
     return None
+
 
 def _get_auto_model_country_id(category_id: str, model_id: str) -> str | None:
     for country in _get_auto_category_countries(category_id):
         country_id = str(country.get("id", "")).strip()
         if not country_id:
             continue
-        if _find_model_by_id(_extract_auto_models(country), model_id):
-            return country_id
+        for engine in _get_auto_country_engines(category_id, country_id):
+            if _find_model_by_id(_extract_auto_models(engine), model_id):
+                return country_id
     return None
+
+
+def _get_auto_model_engine_id(
+    category_id: str,
+    country_id: str,
+    model_id: str,
+) -> str | None:
+    for engine in _get_auto_country_engines(category_id, country_id):
+        engine_id = str(engine.get("id", "")).strip()
+        if not engine_id:
+            continue
+        if _find_model_by_id(_extract_auto_models(engine), model_id):
+            return engine_id
+    return None
+
 
 def _get_auto_model_config(
     category_id: str,
     model_id: str,
     country_id: str | None = None,
+    engine_id: str | None = None,
 ) -> dict | None:
+    if country_id and engine_id:
+        return _find_model_by_id(
+            _get_auto_engine_models(category_id, country_id, engine_id),
+            model_id,
+        )
+
     if country_id:
-        return _find_model_by_id(_get_auto_country_models(category_id, country_id), model_id)
+        for engine in _get_auto_country_engines(category_id, country_id):
+            model = _find_model_by_id(_extract_auto_models(engine), model_id)
+            if model:
+                return model
 
-    model = _find_model_by_id(_get_auto_category_models(category_id), model_id)
-    if model:
-        return model
+    for country in _get_auto_category_countries(category_id):
+        current_country_id = str(country.get("id", "")).strip()
+        if not current_country_id:
+            continue
+        for engine in _get_auto_country_engines(category_id, current_country_id):
+            model = _find_model_by_id(_extract_auto_models(engine), model_id)
+            if model:
+                return model
+    return None
 
-    return _find_model_by_id(
-        [
-            model
-            for country in _get_auto_category_countries(category_id)
-            for model in _extract_auto_models(country)
-        ],
-        model_id,
-    )
 
 def _get_auto_model_title(
     category_id: str,
     model_id: str,
     country_id: str | None = None,
+    engine_id: str | None = None,
 ) -> str | None:
-    model = _get_auto_model_config(category_id, model_id, country_id=country_id)
+    model = _get_auto_model_config(
+        category_id,
+        model_id,
+        country_id=country_id,
+        engine_id=engine_id,
+    )
     if not model:
         return None
     title = str(model.get("title", "")).strip()
     return title or None
 
+
 def _get_auto_model_lead_message(
     category_id: str,
     model_id: str,
     country_id: str | None = None,
+    engine_id: str | None = None,
 ) -> str | None:
-    # lead_message in JSON is deprecated: always use model title
-    return _get_auto_model_title(category_id, model_id, country_id=country_id)
+    return _get_auto_model_title(
+        category_id,
+        model_id,
+        country_id=country_id,
+        engine_id=engine_id,
+    )
+
 
 def _get_auto_model_description_text(
     category_id: str,
     model_id: str,
     country_id: str | None = None,
+    engine_id: str | None = None,
 ) -> str:
-    model = _get_auto_model_config(category_id, model_id, country_id=country_id)
+    model = _get_auto_model_config(
+        category_id,
+        model_id,
+        country_id=country_id,
+        engine_id=engine_id,
+    )
     if not model:
         return _get_auto_model_placeholder_text()
 
@@ -338,19 +485,32 @@ def _get_auto_model_description_text(
     if text.strip():
         return text
 
-    title = _get_auto_model_title(category_id, model_id, country_id=country_id) or model_id
+    title = _get_auto_model_title(
+        category_id,
+        model_id,
+        country_id=country_id,
+        engine_id=engine_id,
+    ) or model_id
     return f"{title}\n\n{_get_auto_model_placeholder_text()}"
+
 
 def _get_auto_model_photo_path(
     category_id: str,
     model_id: str,
     country_id: str | None = None,
+    engine_id: str | None = None,
 ) -> str | None:
-    model = _get_auto_model_config(category_id, model_id, country_id=country_id)
+    model = _get_auto_model_config(
+        category_id,
+        model_id,
+        country_id=country_id,
+        engine_id=engine_id,
+    )
     if not model:
         return None
     value = str(model.get("photo_path", "")).strip()
     return value or None
+
 
 def _get_auto_model_placeholder_text() -> str:
     data = _load_auto_catalog()
@@ -360,10 +520,12 @@ def _get_auto_model_placeholder_text() -> str:
             return value
     return "Подборка по модели авто будет добавлена следующим шагом"
 
+
 def _moto_catalog_classes() -> list[dict]:
     data = _load_moto_catalog()
     classes = data.get("classes", []) if isinstance(data, dict) else []
     return [item for item in classes if isinstance(item, dict)]
+
 
 def _get_moto_class_config(class_id: str) -> dict | None:
     for item in _moto_catalog_classes():
@@ -371,12 +533,30 @@ def _get_moto_class_config(class_id: str) -> dict | None:
             return item
     return None
 
+
+def _get_moto_class_display_name(class_id: str) -> str | None:
+    class_cfg = _get_moto_class_config(class_id)
+    if not class_cfg:
+        return None
+
+    display_name = str(class_cfg.get("display_name", "")).strip()
+    if display_name:
+        return display_name
+
+    button_text = str(class_cfg.get("button_text", "")).strip()
+    if button_text:
+        return button_text.lstrip("👉").strip()
+
+    return None
+
+
 def _join_catalog_lines(lines: object) -> str:
     if isinstance(lines, str):
         return lines
     if isinstance(lines, list):
         return "\n".join(str(line) for line in lines)
     return ""
+
 
 def _get_moto_intro_texts() -> tuple[str, str]:
     data = _load_moto_catalog()
@@ -389,6 +569,7 @@ def _get_moto_intro_texts() -> tuple[str, str]:
     hint = _join_catalog_lines(intro.get("hint_lines"))
     return title, hint
 
+
 def _get_moto_model_placeholder_text() -> str:
     data = _load_moto_catalog()
     if isinstance(data, dict):
@@ -397,7 +578,11 @@ def _get_moto_model_placeholder_text() -> str:
             return value
     return "Подборка по модели мото будет добавлена следующим шагом"
 
-def _get_moto_models_keyboard(class_id: str) -> types.InlineKeyboardMarkup | None:
+
+def _get_moto_models_keyboard(
+    class_id: str,
+    back_callback_data: str = "lead:moto_pick",
+) -> types.InlineKeyboardMarkup | None:
     class_cfg = _get_moto_class_config(class_id)
     if not class_cfg:
         return None
@@ -421,10 +606,11 @@ def _get_moto_models_keyboard(class_id: str) -> types.InlineKeyboardMarkup | Non
     if not rows:
         return None
 
-    kb.button(text=BACK_BUTTON_TEXT, callback_data="lead:moto_pick")
+    kb.button(text=BACK_BUTTON_TEXT, callback_data=back_callback_data)
     rows.append(1)
     kb.adjust(*rows)
     return kb.as_markup()
+
 
 def _get_moto_model_config(class_id: str, model_id: str) -> dict | None:
     class_cfg = _get_moto_class_config(class_id)
@@ -440,6 +626,7 @@ def _get_moto_model_config(class_id: str, model_id: str) -> dict | None:
             return model
     return None
 
+
 def _get_moto_model_title(class_id: str, model_id: str) -> str | None:
     model = _get_moto_model_config(class_id, model_id)
     if not model:
@@ -447,9 +634,10 @@ def _get_moto_model_title(class_id: str, model_id: str) -> str | None:
     title = str(model.get("title", "")).strip()
     return title or None
 
+
 def _get_moto_model_lead_message(class_id: str, model_id: str) -> str | None:
-    # lead_message in JSON is deprecated: always use model title
     return _get_moto_model_title(class_id, model_id)
+
 
 def _get_moto_model_description_text(class_id: str, model_id: str) -> str:
     model = _get_moto_model_config(class_id, model_id)
@@ -462,4 +650,3 @@ def _get_moto_model_description_text(class_id: str, model_id: str) -> str:
 
     title = _get_moto_model_title(class_id, model_id) or model_id
     return f"{title}\n\n{_get_moto_model_placeholder_text()}"
-

@@ -1,4 +1,5 @@
 import asyncio
+import html
 import os
 import random
 import re
@@ -21,9 +22,9 @@ from log import logger
 from tgBot.catalogs import (
     _auto_category_has_countries,
     _get_auto_category_label,
+    _get_auto_engine_title,
     _get_auto_country_title,
     _get_auto_model_description_text,
-    _get_auto_model_country_id,
     _get_auto_model_lead_message,
     _get_auto_model_placeholder_text,
     _get_auto_model_photo_path,
@@ -41,19 +42,20 @@ from tgBot.catalogs import (
 from tgBot.keyboards import (
     get_admin_keyboard,
     get_auto_countries_keyboard,
-    get_auto_country_models_keyboard,
+    get_auto_engine_models_keyboard,
+    get_auto_engines_keyboard,
     get_auto_in_path_post_keyboard,
     get_auto_model_actions_keyboard,
-    get_best_deals_keyboard,
     get_contact_request_keyboard,
-    get_electric_models_keyboard,
     get_guarantees_keyboard,
     get_guarantees_risks_keyboard,
     get_max_profit_keyboard,
     get_moto_classes_keyboard,
     get_moto_model_actions_keyboard,
+    get_manual_phone_request_keyboard,
     get_post_actions_keyboard,
     get_price_range_keyboard,
+    get_phone_country_keyboard,
     get_quick_main_auction_keyboard,
     get_quick_main_credit_keyboard,
     get_quick_main_delivery_keyboard,
@@ -64,7 +66,6 @@ from tgBot.keyboards import (
 from tgBot.states import LeadStates
 from tgBot.texts import (
     BACK_BUTTON_TEXT,
-    BEST_DEALS_NEXT_STEP_TEXT,
     BUDGET_PROMPT_TEXT,
     CONTACT_MANAGER_TEXT,
     HOME_MENU_TEXT,
@@ -160,19 +161,29 @@ async def _show_auto_model_card(
     *,
     category_id: str,
     model_id: str,
-    country_id: str | None = None,
-    back_callback_data: str | None = None,
+    country_id: str,
+    engine_id: str,
     source_token: str = "",
 ) -> None:
-    text = _get_auto_model_description_text(category_id, model_id, country_id=country_id)
+    text = _get_auto_model_description_text(
+        category_id,
+        model_id,
+        country_id=country_id,
+        engine_id=engine_id,
+    )
     reply_markup = get_auto_model_actions_keyboard(
         category_id,
         model_id,
         country_id=country_id,
-        back_callback_data=back_callback_data,
+        engine_id=engine_id,
         source_token=source_token,
     )
-    photo_path = _get_auto_model_photo_path(category_id, model_id, country_id=country_id)
+    photo_path = _get_auto_model_photo_path(
+        category_id,
+        model_id,
+        country_id=country_id,
+        engine_id=engine_id,
+    )
     if photo_path:
         path_obj = Path(photo_path)
         if not path_obj.is_absolute():
@@ -189,7 +200,7 @@ async def _show_auto_model_card(
             except Exception as exc:
                 logger.error(
                     f"Не удалось отправить фото карточки авто {category_id}/{country_id or '-'}"
-                    f"/{model_id}: {exc}"
+                    f"/{engine_id}/{model_id}: {exc}"
                 )
 
     await callback.message.answer(text, reply_markup=reply_markup)
@@ -1119,29 +1130,36 @@ async def send_auto_in_transit_posts_to_user(bot: Bot, user_id: int) -> int:
 
 async def notify_admins_new_lead(bot: Bot, lead: Lead) -> None:
     username = getattr(lead, "username", None)
-    username_text = f"@{username}" if username else "-"
+    username_text = f"@{html.escape(username)}" if username else "-"
+    user_telegram_id = getattr(lead, "user_telegram_id", None)
+    profile_link = (
+        f'<a href="tg://user?id={int(user_telegram_id)}">Открыть профиль</a>'
+        if user_telegram_id is not None
+        else "-"
+    )
     created_at = getattr(lead, "created_at", None)
     created_at_text = created_at.strftime("%Y-%m-%d %H:%M:%S") if hasattr(created_at, "strftime") else "-"
     text = (
         "Новый лид\n"
-        f"ID лида: {getattr(lead, 'id', '-')}\n"
-        f"Действие: {getattr(lead, 'action', '-')}\n"
-        f"TG ID: {getattr(lead, 'user_telegram_id', '-')}\n"
-        f"Username: {username_text}"
+        f"ID лида: {html.escape(str(getattr(lead, 'id', '-')))}\n"
+        f"Действие: {html.escape(str(getattr(lead, 'action', '-')))}\n"
+        f"TG ID: {html.escape(str(user_telegram_id or '-'))}\n"
+        f"Username: {username_text}\n"
+        f"Профиль: {profile_link}"
     )
     extra = (
-        f"\nИмя: {getattr(lead, 'customer_name', None) or '-'}"
-        f"\nТелефон: {getattr(lead, 'phone', None) or '-'}"
-        f"\nЦеновая вилка: {getattr(lead, 'price_range', None) or '-'}"
-        f"\nКомментарий: {getattr(lead, 'message_text', None) or '-'}"
-        f"\nСоздан: {created_at_text} UTC"
+        f"\nИмя: {html.escape(str(getattr(lead, 'customer_name', None) or '-'))}"
+        f"\nТелефон: {html.escape(str(getattr(lead, 'phone', None) or '-'))}"
+        f"\nЦеновая вилка: {html.escape(str(getattr(lead, 'price_range', None) or '-'))}"
+        f"\nКомментарий: {html.escape(str(getattr(lead, 'message_text', None) or '-'))}"
+        f"\nСоздан: {html.escape(created_at_text)} UTC"
     )
     full_text = text + extra
 
     leads_channel_id = await get_leads_channel_id()
     if leads_channel_id is not None:
         try:
-            await bot.send_message(leads_channel_id, full_text)
+            await bot.send_message(leads_channel_id, full_text, parse_mode="HTML")
         except Exception as exc:
             logger.error(f"Не удалось отправить лид в канал {leads_channel_id}: {exc}")
 
@@ -1149,7 +1167,7 @@ async def notify_admins_new_lead(bot: Bot, lead: Lead) -> None:
         if leads_channel_id is not None and admin_id == leads_channel_id:
             continue
         try:
-            await bot.send_message(admin_id, full_text)
+            await bot.send_message(admin_id, full_text, parse_mode="HTML")
         except Exception as exc:
             log_admin_delivery_error(admin_id, exc, action="отправить лид")
 

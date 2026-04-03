@@ -3,6 +3,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
 
 from tgBot.catalogs import (
     _get_auto_countries_keyboard,
+    _get_auto_engines_keyboard,
     _get_auto_models_keyboard,
     _moto_catalog_classes,
 )
@@ -62,6 +63,7 @@ def get_auto_in_path_post_keyboard(
 
 def get_start_keyboard() -> types.InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
+    kb.button(text="🔥 Актуальные варианты", url="https://t.me/autopartner_by")
     kb.button(text="💯 Максимальная выгода", callback_data="max_profit:open")
     kb.button(text="🔎 Подборка авто", callback_data="lead:auto_pick")
     kb.button(text="🏍️ Подборка мото", callback_data="lead:moto_pick")
@@ -69,7 +71,7 @@ def get_start_keyboard() -> types.InlineKeyboardMarkup:
     kb.button(text="🛡️ Гарантии", callback_data="info:guarantees")
     kb.button(text="❓ Быстро о главном", callback_data="info:quick_main")
     kb.button(text=CONTACT_MANAGER_START_INLINE_TEXT, callback_data="lead:contact_manager")
-    kb.adjust(1, 1, 1, 1, 1, 1, 1)
+    kb.adjust(1, 1, 1, 1, 1, 1, 1, 1)
     return kb.as_markup()
 
 def get_price_range_keyboard(
@@ -78,14 +80,12 @@ def get_price_range_keyboard(
 ) -> types.InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
     source_suffix = f":{source}" if source else ""
-    kb.button(text="👉 9 000$ - 12 000$", callback_data=f"price:9_12k{source_suffix}")
-    kb.button(text="👉 12 000$ - 15 000$", callback_data=f"price:12_15k{source_suffix}")
+    kb.button(text="👉 10 000$ - 15 000$", callback_data=f"price:10_15k{source_suffix}")
     kb.button(text="👉 15 000$ - 20 000$", callback_data=f"price:15_20k{source_suffix}")
     kb.button(text="👉 20 000$ - 30 000$", callback_data=f"price:20_30k{source_suffix}")
-    kb.button(text="👉 30 000$+ (люкс)", callback_data=f"price:30k_plus_lux{source_suffix}")
-    kb.button(text="😍 Самые выгодные авто", callback_data=f"price:best_deals{source_suffix}")
+    kb.button(text="👉 30 000$+", callback_data=f"price:30k_plus{source_suffix}")
     kb.button(text=HOME_INLINE_BUTTON_TEXT, callback_data=back_callback_data)
-    kb.adjust(1, 1, 1, 1, 1, 1, 1)
+    kb.adjust(1, 1, 1, 1, 1)
     return kb.as_markup()
 
 def get_auto_countries_keyboard(
@@ -106,16 +106,16 @@ def get_auto_countries_keyboard(
     kb.adjust(1)
     return kb.as_markup()
 
-def get_auto_country_models_keyboard(
+def get_auto_engines_keyboard(
     category_id: str,
     country_id: str,
     back_callback_data: str = "lead:auto_pick",
     source_token: str = "",
 ) -> types.InlineKeyboardMarkup:
-    kb_from_json = _get_auto_models_keyboard(
+    kb_from_json = _get_auto_engines_keyboard(
         category_id,
+        country_id,
         back_callback_data=back_callback_data,
-        country_id=country_id,
         source_token=source_token,
     )
     if kb_from_json:
@@ -126,68 +126,88 @@ def get_auto_country_models_keyboard(
     kb.adjust(1)
     return kb.as_markup()
 
-def get_best_deals_keyboard() -> types.InlineKeyboardMarkup:
-    kb = InlineKeyboardBuilder()
-    kb.button(text="✅ Хочу авто из подборки", callback_data="best_deals:want")
-    kb.button(text="🚗Другие авто с выгодой", callback_data="best_deals:other")
-    kb.button(text=CONTACT_MANAGER_INLINE_TEXT, callback_data="lead:contact_manager")
-    kb.button(text=HOME_REPLY_BUTTON_TEXT, callback_data="guarantees:home")
-    kb.button(text=BACK_BUTTON_TEXT, callback_data="best_deals:back")
-    kb.adjust(1, 1, 1, 1, 1)
-    return kb.as_markup()
-
-def get_electric_models_keyboard(
+def get_auto_engine_models_keyboard(
+    category_id: str,
+    country_id: str,
+    engine_id: str,
     back_callback_data: str = "lead:auto_pick",
+    source_token: str = "",
 ) -> types.InlineKeyboardMarkup:
-    kb_from_json = _get_auto_models_keyboard("electric", back_callback_data=back_callback_data)
+    kb_from_json = _get_auto_models_keyboard(
+        category_id,
+        back_callback_data=back_callback_data,
+        country_id=country_id,
+        engine_id=engine_id,
+        source_token=source_token,
+    )
     if kb_from_json:
         return kb_from_json
 
     kb = InlineKeyboardBuilder()
-    kb.button(text="Hyundai Kona EV", callback_data="electric:model:kona_ev")
-    kb.button(text="Smart Fortwo Electric", callback_data="electric:model:smart_fortwo_electric")
-    kb.button(text="Hyundai Ioniq 5", callback_data="electric:model:ioniq_5")
-    kb.button(text="Chevrolet Bolt EV", callback_data="electric:model:bolt_ev")
-    kb.button(text="Chevrolet Spark EV", callback_data="electric:model:spark_ev")
-    kb.button(text="Tesla Model 3", callback_data="electric:model:tesla_model_3")
-    kb.button(text="BMW i3", callback_data="electric:model:bmw_i3")
     kb.button(text=BACK_BUTTON_TEXT, callback_data=back_callback_data)
-    kb.adjust(1, 1, 1, 1, 1, 1, 1, 1)
+    kb.adjust(1)
     return kb.as_markup()
 
 def get_auto_model_actions_keyboard(
     category_id: str,
     model_id: str,
     *,
-    country_id: str | None = None,
-    back_callback_data: str | None = None,
+    country_id: str,
+    engine_id: str,
     source_token: str = "",
 ) -> types.InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
-    want_callback_data = f"auto_model:want:{category_id}:{model_id}"
-    if country_id:
-        want_callback_data = f"auto_model:want:{category_id}:{country_id}:{model_id}"
+    contact_manager_callback_data = (
+        f"auto_model:contact_manager:{category_id}:{country_id}:{engine_id}:{model_id}"
+    )
+    leave_phone_callback_data = (
+        f"auto_model:leave_phone:{category_id}:{country_id}:{engine_id}:{model_id}"
+    )
     if source_token:
-        want_callback_data = f"{want_callback_data}:{source_token}"
+        contact_manager_callback_data = f"{contact_manager_callback_data}:{source_token}"
+        leave_phone_callback_data = f"{leave_phone_callback_data}:{source_token}"
 
-    if back_callback_data is None:
-        back_callback_data = (
-            f"price_country:{category_id}:{country_id}"
-            if country_id
-            else f"price:{category_id}"
-        )
-
-    kb.button(text="😍Нравится", callback_data=want_callback_data)
+    kb.button(text="✉️ Написать менеджеру", callback_data=contact_manager_callback_data)
+    kb.button(text="📱 Оставить свой номер", callback_data=leave_phone_callback_data)
     kb.button(text=HOME_INLINE_BUTTON_TEXT, callback_data="guarantees:home")
+    kb.adjust(1, 1, 1)
+    return kb.as_markup()
+
+def get_phone_country_keyboard(
+    *,
+    back_callback_data: str,
+) -> types.InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    kb.button(text="🇷🇺 РФ", callback_data="lead_phone_country:ru")
+    kb.button(text="🇧🇾 РБ", callback_data="lead_phone_country:by")
     kb.button(text=BACK_BUTTON_TEXT, callback_data=back_callback_data)
     kb.adjust(1, 1, 1)
+    return kb.as_markup()
+
+def get_manual_phone_request_keyboard() -> types.ReplyKeyboardMarkup:
+    return types.ReplyKeyboardMarkup(
+        keyboard=[
+            [types.KeyboardButton(text=HOME_REPLY_BUTTON_TEXT)],
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=True,
+    )
+
+def get_moto_country_keyboard(
+    class_id: str,
+    back_callback_data: str = "lead:moto_pick",
+) -> types.InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    kb.button(text="🇺🇸 США", callback_data=f"moto_country:{class_id}:usa")
+    kb.button(text=BACK_BUTTON_TEXT, callback_data=back_callback_data)
+    kb.adjust(1, 1)
     return kb.as_markup()
 
 def get_moto_model_actions_keyboard(class_id: str, model_id: str) -> types.InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
     kb.button(text="😍Хочу этот мото", callback_data=f"moto_model:want:{class_id}:{model_id}")
     kb.button(text=HOME_INLINE_BUTTON_TEXT, callback_data="guarantees:home")
-    kb.button(text=BACK_BUTTON_TEXT, callback_data=f"moto_class:{class_id}")
+    kb.button(text=BACK_BUTTON_TEXT, callback_data=f"moto_country:{class_id}:usa")
     kb.adjust(1, 1, 1)
     return kb.as_markup()
 
@@ -274,59 +294,16 @@ def get_moto_classes_keyboard(
         rows.append(1)
 
     if not rows:
-        kb.button(text="💸10 000$", callback_data="moto_class:up_to_10k")
-        kb.button(text="💸10 000–20 000$", callback_data="moto_class:10_20k")
-        kb.button(text="💸 20 000$+", callback_data="moto_class:20k_plus")
-        rows = [1, 1, 1]
+        kb.button(text="👉5 000 - 10 000$", callback_data="moto_class:5_10k")
+        kb.button(text="👉10 000 - 15 000$", callback_data="moto_class:10_15k")
+        kb.button(text="👉15 000 - 20 000$", callback_data="moto_class:15_20k")
+        kb.button(text="👉20 000 - 30 000$", callback_data="moto_class:20_30k")
+        rows = [1, 1, 1, 1]
 
     kb.button(text=HOME_INLINE_BUTTON_TEXT, callback_data="guarantees:home")
     kb.button(text=BACK_BUTTON_TEXT, callback_data=back_callback_data)
     rows.extend([1, 1])
     kb.adjust(*rows)
-    return kb.as_markup()
-
-def get_moto_sport_models_keyboard() -> types.InlineKeyboardMarkup:
-    kb = InlineKeyboardBuilder()
-    kb.button(text="CBR1000rr от 2008 года", callback_data="moto_sport:model:cbr1000rr_2008")
-    kb.button(text="Suzuki GSX-R600\\750", callback_data="moto_sport:model:gsxr_600_750")
-    kb.button(text="Suzuki Hayabusa от 2022", callback_data="moto_sport:model:hayabusa_2022")
-    kb.button(text="Kawasaki ZX10RR от 2020", callback_data="moto_sport:model:zx10rr_2020")
-    kb.button(text="Yamaha R1 от 2018", callback_data="moto_sport:model:yamaha_r1_2018")
-    kb.button(text="Aprillia RSV4 от 2020", callback_data="moto_sport:model:rsv4_2020")
-    kb.button(text="BMW S1000RR от 2019", callback_data="moto_sport:model:s1000rr_2019")
-    kb.button(text="Ducati Panigale V4 от 2023", callback_data="moto_sport:model:panigale_v4_2023")
-    kb.button(text=BACK_BUTTON_TEXT, callback_data="lead:moto_pick")
-    kb.adjust(1, 1, 1, 1, 1, 1, 1, 1, 1)
-    return kb.as_markup()
-
-def get_moto_street_models_keyboard() -> types.InlineKeyboardMarkup:
-    kb = InlineKeyboardBuilder()
-    kb.button(text="Kawasaki Z900 2017", callback_data="moto_street:model:z900_2017")
-    kb.button(text="Yamaha MT09", callback_data="moto_street:model:mt09")
-    kb.button(text="Yamaha MT10", callback_data="moto_street:model:mt10")
-    kb.button(text="Aprilia Tuono V4 от 2020", callback_data="moto_street:model:tuono_v4_2020")
-    kb.button(
-        text="Ducati Streetfighter V4 от 2020",
-        callback_data="moto_street:model:streetfighter_v4_2020",
-    )
-    kb.button(text="Kawasaki ZH2", callback_data="moto_street:model:zh2")
-    kb.button(text=BACK_BUTTON_TEXT, callback_data="lead:moto_pick")
-    kb.adjust(1, 1, 1, 1, 1, 1, 1)
-    return kb.as_markup()
-
-def get_moto_cruiser_models_keyboard() -> types.InlineKeyboardMarkup:
-    kb = InlineKeyboardBuilder()
-    kb.button(text="Honda VT750 от 2024", callback_data="moto_cruiser:model:vt750_2024")
-    kb.button(
-        text="Harley Davidson FatBoy",
-        callback_data="moto_cruiser:model:harley_fatboy",
-    )
-    kb.button(
-        text="Ducati XDiavel 1260 2017",
-        callback_data="moto_cruiser:model:xdiavel_1260_2017",
-    )
-    kb.button(text=BACK_BUTTON_TEXT, callback_data="lead:moto_pick")
-    kb.adjust(1, 1, 1, 1)
     return kb.as_markup()
 
 def get_admin_keyboard() -> types.ReplyKeyboardMarkup:

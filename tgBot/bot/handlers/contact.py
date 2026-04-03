@@ -6,6 +6,27 @@ def _default_reply_keyboard_for_user(user: types.User | None):
         return get_admin_keyboard()
     return get_user_reply_keyboard()
 
+def _manual_phone_example(country_code: str) -> str:
+    return "+79991234567" if country_code == "ru" else "+375291234567"
+
+def _normalize_phone_for_country(text: str, country_code: str) -> str | None:
+    digits = re.sub(r"\D", "", text)
+    if country_code == "ru":
+        if len(digits) == 11 and digits.startswith("8"):
+            return f"+7{digits[1:]}"
+        if len(digits) == 11 and digits.startswith("7"):
+            return f"+{digits}"
+        return None
+
+    if country_code == "by":
+        if len(digits) == 12 and digits.startswith("375"):
+            return f"+{digits}"
+        if len(digits) == 11 and digits.startswith("80"):
+            return f"+375{digits[2:]}"
+        return None
+
+    return None
+
 
 async def _start_contact_flow(message: types.Message, state: FSMContext) -> None:
     await ensure_user_exists(message.from_user)
@@ -31,15 +52,10 @@ async def _show_back_target_menu(message: types.Message, back_target: str) -> No
         title_text, hint_text = _get_moto_intro_texts()
         await message.answer(
             title_text
+            or hint_text
             or MOTO_INTRO_FALLBACK_TEXT,
             reply_markup=get_moto_classes_keyboard(),
         )
-        if hint_text:
-            await message.answer(hint_text)
-        return
-
-    if back_target == "best_deals":
-        await message.answer(BEST_DEALS_NEXT_STEP_TEXT, reply_markup=get_best_deals_keyboard())
         return
 
     await message.answer(MAIN_MENU_ACTION_TEXT, reply_markup=get_start_keyboard())
@@ -202,6 +218,54 @@ async def collect_contact(message: types.Message, state: FSMContext, bot: Bot):
         action=lead_action,
         phone=phone,
         customer_name=name,
+        price_range=lead_price_range,
+        message_text=lead_message_text,
+    )
+    await notify_admins_new_lead(bot, lead)
+    await state.clear()
+    await message.answer(
+        LEAD_SAVED_TEXT,
+        reply_markup=_default_reply_keyboard_for_user(message.from_user),
+    )
+
+
+@router.message(LeadStates.waiting_phone_country)
+async def waiting_phone_country_message(message: types.Message):
+    await message.answer("Выберите страну номера кнопкой выше: РФ или РБ.")
+
+
+@router.message(LeadStates.waiting_manual_phone)
+async def collect_manual_phone(message: types.Message, state: FSMContext, bot: Bot):
+    text = (message.text or "").strip()
+    state_data = await state.get_data()
+    country_code = state_data.get("manual_phone_country")
+    if not country_code:
+        await message.answer("Сначала выберите страну номера: РФ или РБ.")
+        return
+
+    phone = _normalize_phone_for_country(text, country_code)
+    if phone is None:
+        example = _manual_phone_example(country_code)
+        country_label = state_data.get("manual_phone_country_label") or country_code.upper()
+        await message.answer(
+            f"Не удалось распознать номер {country_label}.\n"
+            f"Отправьте его в формате {example}.",
+            reply_markup=get_manual_phone_request_keyboard(),
+        )
+        return
+
+    await ensure_user_exists(message.from_user)
+
+    lead_action = state_data.get("pending_lead_action") or "auto_model_leave_phone"
+    lead_message_text = state_data.get("pending_lead_message_text") or text
+    lead_price_range = state_data.get("pending_lead_price_range")
+    customer_name = (message.from_user.full_name if message.from_user else "").strip() or None
+
+    lead = await save_lead(
+        from_user=message.from_user,
+        action=lead_action,
+        phone=phone,
+        customer_name=customer_name,
         price_range=lead_price_range,
         message_text=lead_message_text,
     )

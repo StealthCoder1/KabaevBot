@@ -3,6 +3,8 @@ from aiogram.fsm.state import State, StatesGroup
 
 class LeadStates(StatesGroup):
     waiting_contact = State()
+    waiting_phone_country = State()
+    waiting_manual_phone = State()
 
 
 class AdminStates(StatesGroup):

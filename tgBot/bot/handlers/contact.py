@@ -4,7 +4,7 @@ from tgBot.bot.shared import *
 def _default_reply_keyboard_for_user(user: types.User | None):
     if user and is_admin(user.id):
         return get_admin_keyboard()
-    return get_user_reply_keyboard()
+    return types.ReplyKeyboardRemove()
 
 def _manual_phone_example(country_code: str) -> str:
     return "+79991234567" if country_code == "ru" else "+375291234567"
@@ -59,9 +59,11 @@ async def _show_back_target_menu(message: types.Message, back_target: str) -> No
         )
         return
 
-    await message.answer(MAIN_MENU_ACTION_TEXT, reply_markup=get_start_keyboard())
-    if not is_admin(message.from_user.id):
-        await message.answer(MAIN_MENU_VARIANT_TEXT, reply_markup=get_user_reply_keyboard())
+    await message.answer(
+        HOME_MENU_TEXT,
+        reply_markup=get_start_keyboard(),
+        parse_mode="HTML",
+    )
 
 
 def _message_plain_text(message: types.Message | None) -> str:

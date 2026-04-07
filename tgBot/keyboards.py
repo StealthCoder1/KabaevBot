@@ -358,7 +358,6 @@ def get_contact_request_keyboard() -> types.ReplyKeyboardMarkup:
     return types.ReplyKeyboardMarkup(
         keyboard=[
             [types.KeyboardButton(text="📱 Отправить номер", request_contact=True)],
-            [types.KeyboardButton(text=HOME_REPLY_BUTTON_TEXT)],
         ],
         resize_keyboard=True,
         one_time_keyboard=True,

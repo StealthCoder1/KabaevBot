@@ -12,11 +12,6 @@ async def _send_home_menu(message: types.Message) -> None:
         reply_markup=get_start_keyboard(),
         parse_mode="HTML",
     )
-    if not is_admin(message.from_user.id):
-        await message.answer(
-            MAIN_MENU_VARIANT_TEXT,
-            reply_markup=get_user_reply_keyboard(),
-        )
 
 
 @router.message(CommandStart())

@@ -16,9 +16,9 @@ AUTO_BUDGET_MODELS_BODY = (
     "Это зависит от нескольких ключевых факторов:\n"
     "•  степень повреждения,\n"
     "•  пробег,\n"
-    "•  комплектация.\n"
-    "\nМы опираемся только на статистику, а значит — на реальные цифры, а не на догадки!"
+    "•  комплектация."
 )
+AUTO_BUDGET_MODELS_FOOTER = "Мы опираемся только на статистику, а значит — на реальные цифры, а не на догадки!"
 MANUAL_PHONE_FLOW_STATES = {
     LeadStates.waiting_phone_country.state,
     LeadStates.waiting_manual_phone.state,
@@ -94,10 +94,11 @@ def _get_auto_budget_intro_text(
     country_title: str | None = None,
     engine_title: str | None = None,
 ) -> str:
-    lines = [f"<b>Бюджет: {_get_auto_category_label(category_id)}</b>"]
+    lines = [f"Бюджет: <b>{_get_auto_category_label(category_id)}</b>"]
     if engine_title:
-        lines.append(f"<b>Топливо: {engine_title.lower()}</b>")
-    lines.append(f"<b>{AUTO_BUDGET_MODELS_BODY}</b>")
+        lines.append(f"Топливо: <b>{engine_title.lower()}</b>")
+    lines.append(AUTO_BUDGET_MODELS_BODY)
+    lines.append(f"<b>{AUTO_BUDGET_MODELS_FOOTER}</b>")
     return "\n".join(lines)
 
 

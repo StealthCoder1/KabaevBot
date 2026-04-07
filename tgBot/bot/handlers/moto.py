@@ -29,9 +29,9 @@ MOTO_MODELS_BODY = (
     "Это зависит от нескольких ключевых факторов:\n"
     "•  степень повреждения,\n"
     "•  пробег,\n"
-    "•  комплектация.\n"
-    "\nМы опираемся только на статистику, а значит — на реальные цифры, а не на догадки!"
+    "•  комплектация."
 )
+MOTO_MODELS_FOOTER = "Мы опираемся только на статистику, а значит — на реальные цифры, а не на догадки!"
 
 
 def _get_moto_budget_intro_text(
@@ -40,9 +40,10 @@ def _get_moto_budget_intro_text(
 ) -> str:
     return "\n".join(
         [
-            f"<b>Бюджет: {budget_name}</b>",
-            f"<b>Страна: {country_title}</b>",
-            f"<b>{MOTO_MODELS_BODY}</b>",
+            f"Бюджет: <b>{budget_name}</b>",
+            f"Страна: <b>{country_title}</b>",
+            MOTO_MODELS_BODY,
+            f"<b>{MOTO_MODELS_FOOTER}</b>",
         ]
     )
 

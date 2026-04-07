@@ -10,24 +10,14 @@ AUTO_PICK_SOURCE_TO_TOKEN = {
     "quick_main_hidden_damage": "qhd",
 }
 AUTO_PICK_TOKEN_TO_SOURCE = {token: source for source, token in AUTO_PICK_SOURCE_TO_TOKEN.items()}
-AUTO_BUDGET_HEADLINE_LABELS = {
-    "10_15k": "10–15k$",
-    "15_20k": "15–20k$",
-    "20_30k": "20–30k$",
-    "30k_plus": "30k$+",
-}
 AUTO_BUDGET_MODELS_BODY = (
-    "👇 Выбирайте модель — и смотрите, за сколько мы реально\n"
-    "привозим такие авто нашим клиентам.\n"
-    "P.S. цены ниже рынка РБ до 40%\n\n"
-    "❕ Часто цена зависит от множества факторов и даже одна и\n"
-    "та же модель с одинаковым годом может стоить по-разному,\n"
-    "потому что:\n"
-    "1) степень повреждений\n"
-    "2) пробег\n"
-    "3) комплектации\n"
-    "Мы ориентируемся на статистику\n\n"
-    "Начнём? Жмите кнопку ниже 👇"
+    "Перед вами список, который подходят под заданные параметры.\n"
+    "Важно: цена на одинаковые модели и годы выпуска может существенно различаться. "
+    "Это зависит от нескольких ключевых факторов:\n"
+    "•  степень повреждения,\n"
+    "•  пробег,\n"
+    "•  комплектация.\n"
+    "\nМы опираемся только на статистику, а значит — на реальные цифры, а не на догадки!"
 )
 MANUAL_PHONE_FLOW_STATES = {
     LeadStates.waiting_phone_country.state,
@@ -104,13 +94,11 @@ def _get_auto_budget_intro_text(
     country_title: str | None = None,
     engine_title: str | None = None,
 ) -> str:
-    label = AUTO_BUDGET_HEADLINE_LABELS.get(category_id, _get_auto_category_label(category_id))
-    headline = f"🔥 Лучшие авто в бюджете {label}"
-    if country_title:
-        headline = f"{headline} / {country_title}"
+    lines = [f"<b>Бюджет: {_get_auto_category_label(category_id)}</b>"]
     if engine_title:
-        headline = f"{headline} / {engine_title}"
-    return f"{headline}\n{AUTO_BUDGET_MODELS_BODY}"
+        lines.append(f"<b>Топливо: {engine_title.lower()}</b>")
+    lines.append(f"<b>{AUTO_BUDGET_MODELS_BODY}</b>")
+    return "\n".join(lines)
 
 
 async def _clear_manual_phone_state_if_needed(state: FSMContext) -> None:
@@ -125,9 +113,9 @@ async def _show_country_picker(
     category_id: str,
     source: str = "",
 ) -> None:
-    category_label = _get_auto_category_label(category_id)
     await callback.message.answer(
-        f"🌍 Выберите страну для бюджета {category_label}",
+        "<b>Из какой страны рассматриваете автомобиль?</b>",
+        parse_mode="HTML",
         reply_markup=get_auto_countries_keyboard(
             category_id,
             back_callback_data=_get_auto_pick_callback_data(source),
@@ -152,6 +140,7 @@ async def auto_pick_callback(callback: types.CallbackQuery, state: FSMContext):
     }.get(source, "guarantees:home")
     await callback.message.answer(
         BUDGET_PROMPT_TEXT,
+        parse_mode="HTML",
         reply_markup=get_price_range_keyboard(
             back_callback_data=back_callback_data,
             source=source,
@@ -193,10 +182,10 @@ async def price_country_callback(callback: types.CallbackQuery, state: FSMContex
     _, category_id, country_id, *rest = parts
     source_token = rest[0] if rest else ""
     source = _token_to_source(source_token)
-    country_title = _get_auto_country_title(category_id, country_id) or country_id
 
     await callback.message.answer(
-        f"⚙️ Выберите тип двигателя для {country_title}",
+        "<b>Выберите тип двигателя</b>",
+        parse_mode="HTML",
         reply_markup=get_auto_engines_keyboard(
             category_id,
             country_id,
@@ -227,6 +216,7 @@ async def price_engine_callback(callback: types.CallbackQuery, state: FSMContext
             country_title=country_title,
             engine_title=engine_title,
         ),
+        parse_mode="HTML",
         reply_markup=get_auto_engine_models_keyboard(
             category_id,
             country_id,
@@ -264,38 +254,21 @@ async def auto_model_pick_callback(callback: types.CallbackQuery, state: FSMCont
 async def auto_model_contact_manager_callback(callback: types.CallbackQuery, state: FSMContext):
     await ensure_user_exists(callback.from_user)
     parts = callback.data.split(":")
-    if len(parts) not in (6, 7):
-        await callback.answer(_get_auto_model_placeholder_text())
-        return
-
-    _, _, category_id, country_id, engine_id, model_id, *rest = parts
-    model_title = (
-        _get_auto_model_lead_message(
-            category_id,
-            model_id,
-            country_id=country_id,
-            engine_id=engine_id,
+    leave_phone_callback_data = "lead:contact_manager:phone"
+    if len(parts) >= 6:
+        _, _, category_id, country_id, engine_id, model_id, *rest = parts
+        leave_phone_callback_data = (
+            f"auto_model:leave_phone:{category_id}:{country_id}:{engine_id}:{model_id}"
         )
-        or _get_auto_model_title(
-            category_id,
-            model_id,
-            country_id=country_id,
-            engine_id=engine_id,
-        )
-        or model_id
-    )
-    price_range_label = _build_auto_price_range_label(category_id, country_id, engine_id)
+        if rest:
+            leave_phone_callback_data = f"{leave_phone_callback_data}:{rest[0]}"
 
-    await state.set_state(LeadStates.waiting_contact)
-    await state.update_data(
-        pending_lead_action="auto_model_contact_manager",
-        pending_lead_message_text=model_title,
-        pending_lead_price_range=price_range_label,
-        pending_back_target="auto_pick",
-    )
     await callback.message.answer(
-        LEAD_CONTACT_REQUEST_TEXT,
-        reply_markup=get_contact_request_keyboard(),
+        "<b>Выберите способ связи с менеджером ⤵️</b>",
+        parse_mode="HTML",
+        reply_markup=get_manager_contact_keyboard(
+            leave_phone_callback_data=leave_phone_callback_data,
+        ),
     )
     await callback.answer()
 

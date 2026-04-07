@@ -14,6 +14,43 @@ AUTO_CATALOG_PATH = Path(__file__).resolve().parent.parent / "Data" / "json" / "
 _auto_catalog_cache = None
 MAX_PROFIT_LOTS_PATH = Path(__file__).resolve().parent.parent / "Data" / "json" / "max_profit_lots.json"
 _max_profit_lots_cache = None
+AUTO_COUNTRY_DISPLAY_TITLES = {
+    "usa": "США",
+    "china": "Китай",
+    "korea": "Корея",
+}
+AUTO_COUNTRY_BUTTON_ORDER = {
+    "korea": 0,
+    "china": 1,
+    "usa": 2,
+}
+AUTO_ENGINE_BUTTON_PREFIXES = {
+    "gasoline": "⛽️",
+    "diesel": "⛽️",
+    "electric": "⚡️",
+}
+AUTO_ENGINE_BUTTON_ORDER = {
+    "gasoline": 0,
+    "diesel": 1,
+    "electric": 2,
+}
+AUTO_MODEL_SOURCE_OVERRIDES = {
+    ("10_15k", "gasoline"): ("30k_plus", "usa", "gasoline"),
+}
+AUTO_MODEL_TITLE_OVERRIDES = {
+    ("10_15k", "gasoline", "range_rover_velar"): "Land Rover Range Rover Velar",
+}
+MOTO_MODEL_OVERRIDES = {
+    "5_10k": (
+        {"model_id": "cbr1000rr_2008", "title": "Honda CBR1000RR"},
+        {"model_id": "mt09", "title": "Yamaha MT-09"},
+        {"model_id": "z900_2017", "title": "Kawasaki Z900"},
+    ),
+}
+
+
+def _format_budget_label(label: str) -> str:
+    return label.replace(" - ", " – ").strip()
 
 
 def _load_moto_catalog() -> dict:
@@ -100,15 +137,15 @@ def _get_auto_category_label(category_id: str) -> str:
     if category:
         label = str(category.get("label", "")).strip()
         if label:
-            return label
+            return _format_budget_label(label)
 
     fallback_labels = {
-        "10_15k": "10 000$ - 15 000$",
-        "15_20k": "15 000$ - 20 000$",
+        "10_15k": "10 000$ - 16 000$",
+        "15_20k": "16 000$ - 20 000$",
         "20_30k": "20 000$ - 30 000$",
         "30k_plus": "30 000$+",
     }
-    return fallback_labels.get(category_id, category_id)
+    return _format_budget_label(fallback_labels.get(category_id, category_id))
 
 
 def _extract_auto_models(container: dict | None) -> list[dict]:
@@ -155,14 +192,9 @@ def _get_auto_country_title(category_id: str, country_id: str) -> str | None:
     if country:
         title = str(country.get("title", "")).strip()
         if title:
-            return title
+            return AUTO_COUNTRY_DISPLAY_TITLES.get(country_id, title)
 
-    fallback_titles = {
-        "usa": "США",
-        "china": "Китай",
-        "korea": "Южная Корея",
-    }
-    return fallback_titles.get(country_id)
+    return AUTO_COUNTRY_DISPLAY_TITLES.get(country_id)
 
 
 def _get_country_flag(country_id: str) -> str:
@@ -208,11 +240,59 @@ def _get_auto_engine_title(
     return fallback_titles.get(engine_id)
 
 
+def _get_auto_engine_button_text(
+    category_id: str,
+    country_id: str,
+    engine_id: str,
+) -> str:
+    title = _get_auto_engine_title(category_id, country_id, engine_id) or engine_id
+    prefix = AUTO_ENGINE_BUTTON_PREFIXES.get(engine_id, "")
+    return f"{prefix} {title}".strip()
+
+
+def _get_auto_model_override_source(
+    category_id: str,
+    country_id: str,
+    engine_id: str,
+) -> tuple[str, str, str] | None:
+    override = AUTO_MODEL_SOURCE_OVERRIDES.get((category_id, engine_id))
+    if not override:
+        return None
+
+    source_category_id, source_country_id, source_engine_id = override
+    resolved_country_id = country_id if source_country_id == "*" else source_country_id
+    return source_category_id, resolved_country_id, source_engine_id
+
+
+def _apply_auto_model_title_overrides(
+    category_id: str,
+    engine_id: str,
+    models: list[dict],
+) -> list[dict]:
+    overridden_models: list[dict] = []
+    for model in models:
+        model_copy = copy.deepcopy(model)
+        model_id = str(model_copy.get("id", "")).strip()
+        title_override = AUTO_MODEL_TITLE_OVERRIDES.get((category_id, engine_id, model_id))
+        if title_override:
+            model_copy["title"] = title_override
+        overridden_models.append(model_copy)
+    return overridden_models
+
+
 def _get_auto_engine_models(
     category_id: str,
     country_id: str,
     engine_id: str,
 ) -> list[dict]:
+    override_source = _get_auto_model_override_source(category_id, country_id, engine_id)
+    if override_source is not None:
+        source_category_id, source_country_id, source_engine_id = override_source
+        source_models = _extract_auto_models(
+            _get_auto_engine_config(source_category_id, source_country_id, source_engine_id)
+        )
+        return _apply_auto_model_title_overrides(category_id, engine_id, source_models)
+
     return _extract_auto_models(_get_auto_engine_config(category_id, country_id, engine_id))
 
 
@@ -261,9 +341,16 @@ def _get_auto_countries_keyboard(
 
     kb = InlineKeyboardBuilder()
     rows: list[int] = []
-    for country in countries:
+    sorted_countries = sorted(
+        countries,
+        key=lambda country: (
+            AUTO_COUNTRY_BUTTON_ORDER.get(str(country.get("id", "")).strip(), 99),
+            str(country.get("title", "")).strip(),
+        ),
+    )
+    for country in sorted_countries:
         country_id = str(country.get("id", "")).strip()
-        title = str(country.get("title", "")).strip()
+        title = _get_auto_country_title(category_id, country_id) or str(country.get("title", "")).strip()
         if not country_id or not title:
             continue
         country_flag = _get_country_flag(country_id)
@@ -301,9 +388,16 @@ def _get_auto_engines_keyboard(
 
     kb = InlineKeyboardBuilder()
     rows: list[int] = []
-    for engine in engines:
+    sorted_engines = sorted(
+        engines,
+        key=lambda engine: (
+            AUTO_ENGINE_BUTTON_ORDER.get(str(engine.get("id", "")).strip(), 99),
+            str(engine.get("title", "")).strip(),
+        ),
+    )
+    for engine in sorted_engines:
         engine_id = str(engine.get("id", "")).strip()
-        title = str(engine.get("title", "")).strip()
+        title = _get_auto_engine_button_text(category_id, country_id, engine_id)
         if not engine_id or not title:
             continue
         kb.button(
@@ -541,11 +635,11 @@ def _get_moto_class_display_name(class_id: str) -> str | None:
 
     display_name = str(class_cfg.get("display_name", "")).strip()
     if display_name:
-        return display_name
+        return _format_budget_label(display_name)
 
     button_text = str(class_cfg.get("button_text", "")).strip()
     if button_text:
-        return button_text.lstrip("👉").strip()
+        return _format_budget_label(button_text.lstrip("👉").strip())
 
     return None
 
@@ -579,16 +673,45 @@ def _get_moto_model_placeholder_text() -> str:
     return "Подборка по модели мото будет добавлена следующим шагом"
 
 
+def _get_moto_class_models(class_id: str) -> list[dict]:
+    class_cfg = _get_moto_class_config(class_id)
+    if not class_cfg:
+        return []
+
+    models = class_cfg.get("models", [])
+    if not isinstance(models, list):
+        return []
+
+    prepared_models = [item for item in models if isinstance(item, dict)]
+    override_specs = MOTO_MODEL_OVERRIDES.get(class_id)
+    if not override_specs:
+        return prepared_models
+
+    models_by_id = {
+        str(model.get("id", "")).strip(): model
+        for model in prepared_models
+    }
+    overridden_models: list[dict] = []
+    for spec in override_specs:
+        model_id = str(spec.get("model_id", "")).strip()
+        source_model = models_by_id.get(model_id)
+        if not source_model:
+            continue
+        model_copy = copy.deepcopy(source_model)
+        title_override = str(spec.get("title", "")).strip()
+        if title_override:
+            model_copy["title"] = title_override
+        overridden_models.append(model_copy)
+
+    return overridden_models
+
+
 def _get_moto_models_keyboard(
     class_id: str,
     back_callback_data: str = "lead:moto_pick",
 ) -> types.InlineKeyboardMarkup | None:
-    class_cfg = _get_moto_class_config(class_id)
-    if not class_cfg:
-        return None
-
-    models = class_cfg.get("models", [])
-    if not isinstance(models, list) or not models:
+    models = _get_moto_class_models(class_id)
+    if not models:
         return None
 
     kb = InlineKeyboardBuilder()
@@ -613,15 +736,7 @@ def _get_moto_models_keyboard(
 
 
 def _get_moto_model_config(class_id: str, model_id: str) -> dict | None:
-    class_cfg = _get_moto_class_config(class_id)
-    if not class_cfg:
-        return None
-    models = class_cfg.get("models", [])
-    if not isinstance(models, list):
-        return None
-    for model in models:
-        if not isinstance(model, dict):
-            continue
+    for model in _get_moto_class_models(class_id):
         if str(model.get("id", "")).strip() == model_id:
             return model
     return None

@@ -5,12 +5,10 @@ from tgBot.bot.shared import _show_moto_model_card, ensure_user_exists, router
 from tgBot.catalogs import (
     _get_moto_class_config,
     _get_moto_class_display_name,
-    _get_moto_intro_texts,
     _get_moto_model_lead_message,
     _get_moto_model_placeholder_text,
     _get_moto_model_title,
     _get_moto_models_keyboard,
-    _join_catalog_lines,
 )
 from tgBot.keyboards import (
     get_contact_request_keyboard,
@@ -19,13 +17,34 @@ from tgBot.keyboards import (
 )
 from tgBot.states import LeadStates
 from tgBot.texts import (
-    MOTO_HINT_FALLBACK_TEXT,
-    MOTO_INTRO_FALLBACK_TEXT,
     MOTO_MODEL_RESOLVE_ERROR_TEXT,
 )
 
 MOTO_COUNTRY_ID = "usa"
 MOTO_COUNTRY_TITLE = "США"
+MOTO_BUDGET_PROMPT_TEXT = "<b>💸 В каком бюджете ищете мотоцикл?</b>"
+MOTO_MODELS_BODY = (
+    "Перед вами список, который подходят под заданные параметры.\n"
+    "Важно: цена на одинаковые модели и годы выпуска может существенно различаться. "
+    "Это зависит от нескольких ключевых факторов:\n"
+    "•  степень повреждения,\n"
+    "•  пробег,\n"
+    "•  комплектация.\n"
+    "\nМы опираемся только на статистику, а значит — на реальные цифры, а не на догадки!"
+)
+
+
+def _get_moto_budget_intro_text(
+    budget_name: str,
+    country_title: str,
+) -> str:
+    return "\n".join(
+        [
+            f"<b>Бюджет: {budget_name}</b>",
+            f"<b>Страна: {country_title}</b>",
+            f"<b>{MOTO_MODELS_BODY}</b>",
+        ]
+    )
 
 
 @router.callback_query((F.data == "lead:moto_pick") | F.data.startswith("lead:moto_pick:"))
@@ -37,9 +56,9 @@ async def moto_pick_callback(callback: types.CallbackQuery):
         "risks": "guarantees:risks",
         "quick_main_delivery": "quick_main:delivery",
     }.get(source, "guarantees:home")
-    title_text, hint_text = _get_moto_intro_texts()
     await callback.message.answer(
-        title_text or hint_text or MOTO_INTRO_FALLBACK_TEXT,
+        MOTO_BUDGET_PROMPT_TEXT,
+        parse_mode="HTML",
         reply_markup=get_moto_classes_keyboard(back_callback_data=back_callback_data),
     )
     await callback.answer()
@@ -49,10 +68,10 @@ async def moto_pick_callback(callback: types.CallbackQuery):
 async def moto_class_callback(callback: types.CallbackQuery):
     await ensure_user_exists(callback.from_user)
     budget_id = callback.data.split(":", maxsplit=1)[1]
-    budget_name = _get_moto_class_display_name(budget_id) or budget_id
 
     await callback.message.answer(
-        f"🌍 Выберите страну для бюджета {budget_name}:",
+        "<b>Из какой страны рассматриваете мотоцикл?</b>",
+        parse_mode="HTML",
         reply_markup=get_moto_country_keyboard(
             budget_id,
             back_callback_data="lead:moto_pick",
@@ -70,33 +89,19 @@ async def moto_country_callback(callback: types.CallbackQuery):
         return
 
     _, budget_id, country_id = parts
-    budget_cfg = _get_moto_class_config(budget_id)
     budget_name = _get_moto_class_display_name(budget_id) or budget_id
     country_title = MOTO_COUNTRY_TITLE if country_id == MOTO_COUNTRY_ID else country_id
 
-    if budget_cfg:
-        screen_text = _join_catalog_lines(budget_cfg.get("screen_lines"))
-        models_markup = _get_moto_models_keyboard(
-            budget_id,
-            back_callback_data=f"moto_class:{budget_id}",
+    models_markup = _get_moto_models_keyboard(
+        budget_id,
+        back_callback_data=f"moto_class:{budget_id}",
+    )
+    if models_markup is not None:
+        await callback.message.answer(
+            _get_moto_budget_intro_text(budget_name, country_title),
+            parse_mode="HTML",
+            reply_markup=models_markup,
         )
-        if screen_text and models_markup is not None:
-            await callback.message.answer(
-                f"{screen_text}\n\n🌍 Страна: {country_title}",
-                reply_markup=models_markup,
-            )
-        elif screen_text:
-            await callback.message.answer(f"{screen_text}\n\n🌍 Страна: {country_title}")
-        elif models_markup is not None:
-            await callback.message.answer(
-                f"Вы выбрали бюджет: {budget_name} / {country_title}.",
-                reply_markup=models_markup,
-            )
-        else:
-            await callback.message.answer(
-                f"Вы выбрали бюджет: {budget_name} / {country_title}.\n"
-                "Раздел готов к наполнению. Добавьте модели в JSON."
-            )
         await callback.answer()
         return
 

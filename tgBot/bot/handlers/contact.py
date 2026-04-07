@@ -44,6 +44,7 @@ async def _show_back_target_menu(message: types.Message, back_target: str) -> No
     if back_target == "auto_pick":
         await message.answer(
             BUDGET_PROMPT_TEXT,
+            parse_mode="HTML",
             reply_markup=get_price_range_keyboard(),
         )
         return
@@ -94,6 +95,17 @@ def _build_post_like_lead_text(
 
 @router.callback_query(F.data == "lead:contact_manager")
 async def contact_manager_callback(callback: types.CallbackQuery, state: FSMContext):
+    await ensure_user_exists(callback.from_user)
+    await callback.message.answer(
+        CONTACT_MANAGER_CHOICE_TEXT,
+        parse_mode="HTML",
+        reply_markup=get_manager_contact_keyboard(),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "lead:contact_manager:phone")
+async def contact_manager_phone_callback(callback: types.CallbackQuery, state: FSMContext):
     await _start_contact_flow(callback.message, state)
     await callback.answer()
 
@@ -138,7 +150,12 @@ async def post_like_callback(callback: types.CallbackQuery, state: FSMContext):
 
 @router.message(F.text == CONTACT_MANAGER_TEXT)
 async def contact_manager_reply_button_handler(message: types.Message, state: FSMContext):
-    await _start_contact_flow(message, state)
+    await ensure_user_exists(message.from_user)
+    await message.answer(
+        CONTACT_MANAGER_CHOICE_TEXT,
+        parse_mode="HTML",
+        reply_markup=get_manager_contact_keyboard(),
+    )
 
 
 @router.message(LeadStates.waiting_contact, F.contact)

@@ -41,6 +41,7 @@ from tgBot.catalogs import (
 )
 from tgBot.keyboards import (
     get_admin_keyboard,
+    get_auto_in_path_intro_keyboard,
     get_auto_countries_keyboard,
     get_auto_engine_models_keyboard,
     get_auto_engines_keyboard,
@@ -49,6 +50,7 @@ from tgBot.keyboards import (
     get_contact_request_keyboard,
     get_guarantees_keyboard,
     get_guarantees_risks_keyboard,
+    get_manager_contact_keyboard,
     get_max_profit_keyboard,
     get_moto_classes_keyboard,
     get_moto_model_actions_keyboard,
@@ -60,6 +62,7 @@ from tgBot.keyboards import (
     get_quick_main_credit_keyboard,
     get_quick_main_delivery_keyboard,
     get_quick_main_keyboard,
+    get_quick_main_topic_keyboard,
     get_start_keyboard,
     get_user_reply_keyboard,
 )
@@ -67,6 +70,7 @@ from tgBot.states import LeadStates
 from tgBot.texts import (
     BACK_BUTTON_TEXT,
     BUDGET_PROMPT_TEXT,
+    CONTACT_MANAGER_CHOICE_TEXT,
     CONTACT_MANAGER_TEXT,
     HOME_MENU_TEXT,
     HOME_REPLY_BUTTON_TEXT,

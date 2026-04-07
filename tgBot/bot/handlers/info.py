@@ -11,6 +11,18 @@ async def auto_in_transit_callback(callback: types.CallbackQuery, bot: Bot):
 @router.callback_query(F.data == "catalog:auto_in_path")
 async def auto_in_path_catalog_callback(callback: types.CallbackQuery, bot: Bot):
     await ensure_user_exists(callback.from_user)
+    await callback.message.answer(
+        "<b>Мы регулярно отслеживаем аукционы 🇺🇸 и отбираем наиболее выгодные варианты.</b>\n\n"
+        "Все представленные ниже авто находятся в продаже и в ближайшее время будут доставлены в Беларусь.",
+        parse_mode="HTML",
+        reply_markup=get_auto_in_path_intro_keyboard(),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "catalog:auto_in_path:show")
+async def auto_in_path_catalog_show_callback(callback: types.CallbackQuery, bot: Bot):
+    await ensure_user_exists(callback.from_user)
     await callback.answer()
 
     source_channel_id = await get_auto_in_path_channel_id()
@@ -112,7 +124,11 @@ async def guarantees_risks_callback(callback: types.CallbackQuery):
 @router.callback_query(F.data == "guarantees:home")
 async def guarantees_home_callback(callback: types.CallbackQuery):
     await ensure_user_exists(callback.from_user)
-    await callback.message.answer(HOME_MENU_TEXT, reply_markup=get_start_keyboard())
+    await callback.message.answer(
+        HOME_MENU_TEXT,
+        reply_markup=get_start_keyboard(),
+        parse_mode="HTML",
+    )
     await callback.answer()
 
 
@@ -120,8 +136,7 @@ async def guarantees_home_callback(callback: types.CallbackQuery):
 async def quick_main_info_callback(callback: types.CallbackQuery):
     await ensure_user_exists(callback.from_user)
     await callback.message.answer(
-        "🔍 Всё, что вы хотели спросить — собрано тут. Нажимай на\n"
-        "любой вопрос ниже 👇",
+        "Выберите интересующий вопрос ⤵️",
         reply_markup=get_quick_main_keyboard(),
     )
     await callback.answer()
@@ -131,18 +146,53 @@ async def quick_main_info_callback(callback: types.CallbackQuery):
 async def quick_main_topic_callback(callback: types.CallbackQuery):
     await ensure_user_exists(callback.from_user)
     topic_id = callback.data.split(":", maxsplit=1)[1]
+    if topic_id == "equipment":
+        await callback.message.answer(
+            "🛻 Какую еще технику можно привезти?\n\n"
+            "Сейчас в боте мы подбираем:\n"
+            "🚗 автомобили из США, Китая и Кореи;\n"
+            "🏍️ мотоциклы из США.\n\n"
+            "Если вас интересует конкретная техника или редкая модель, напишите менеджеру — "
+            "скажем честно, сможем ли привезти и какой нужен бюджет.",
+            reply_markup=get_quick_main_topic_keyboard(include_manager=True),
+        )
+        await callback.answer()
+        return
+
+    if topic_id == "pricing":
+        await callback.message.answer(
+            "💵 Сколько стоят ваши услуги?\n\n"
+            "Фиксированной цены для всех нет: итог зависит от выбранного авто или мото, "
+            "страны покупки, стоимости лота, логистики, ремонта и формата сопровождения.\n\n"
+            "Перед покупкой мы заранее считаем полный бюджет под ключ, чтобы вы понимали "
+            "все расходы до принятия решения.",
+            reply_markup=get_quick_main_topic_keyboard(include_manager=True),
+        )
+        await callback.answer()
+        return
+
     if topic_id == "delivery":
         await callback.message.answer(
-            "🌍 Путь из Штатов: сколько едет авто?\n\n"
-            "🛳️В среднем — 2–4 месяца. Бывает быстрее, бывает чуть\n"
-            "дольше. Зависит от порта, погоды и настроения Вселенной.\n\n"
-            "Мы не крутим штурвал, но всегда держим вас в курсе. И да —\n"
-            "даём трек-номер, как на Алике :)\n\n"
-            "👇 Ниже по кнопке — несколько отзывов наших клиентов:\n"
-            "кто-то получил авто за 2,5 месяца, кому-то пришлось ждать\n"
-            "подольше. Мы не скрываем — реальные кейсы бывают\n"
-            "разные, и мы об этом честно говорим.",
-            reply_markup=get_quick_main_delivery_keyboard(),
+            "🛳️ Какие сроки доставки?\n\n"
+            "В среднем доставка занимает 2–4 месяца.\n"
+            "Срок зависит от страны отправления, порта, логистики и загрузки.\n\n"
+            "На каждом этапе держим вас в курсе: выкуп, отправка, порт, СТО и выдача.",
+            reply_markup=get_quick_main_topic_keyboard(include_manager=True),
+        )
+        await callback.answer()
+        return
+
+    if topic_id == "guarantees":
+        await guarantees_info_callback(callback)
+        return
+
+    if topic_id == "location":
+        await callback.message.answer(
+            "📍 Где нас найти?\n\n"
+            "Пишите нам в Telegram: @autopartner_import\n"
+            "Актуальные варианты публикуем в канале: @autopartner_by\n\n"
+            "Если хотите обсудить подбор, бюджет или конкретную модель, используйте кнопки ниже.",
+            reply_markup=get_quick_main_topic_keyboard(include_manager=True, include_channel=True),
         )
         await callback.answer()
         return
@@ -235,11 +285,15 @@ async def quick_main_topic_callback(callback: types.CallbackQuery):
         return
 
     topic_titles = {
+        "equipment": "Какую еще технику можно привезти?",
+        "pricing": "Сколько стоят ваши услуги?",
         "auction": "Покупка авто на аукционе",
-        "delivery": "Сколько едет авто из США?",
+        "delivery": "Какие сроки доставки?",
         "credit": "Кредит/лизинг",
         "insurance": "Авто страхуется?",
         "hidden_damage": "Скрытые повреждения",
+        "guarantees": "Есть ли гарантии?",
+        "location": "Где нас найти?",
     }
     title = topic_titles.get(topic_id, topic_id)
     await callback.message.answer(

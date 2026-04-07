@@ -7,7 +7,11 @@ ADMIN_BACK_TEXT = BACK_BUTTON_TEXT
 
 
 async def _send_home_menu(message: types.Message) -> None:
-    await message.answer(HOME_MENU_TEXT, reply_markup=get_start_keyboard())
+    await message.answer(
+        HOME_MENU_TEXT,
+        reply_markup=get_start_keyboard(),
+        parse_mode="HTML",
+    )
     if not is_admin(message.from_user.id):
         await message.answer(
             MAIN_MENU_VARIANT_TEXT,
@@ -19,7 +23,7 @@ async def _send_home_menu(message: types.Message) -> None:
 async def cmd_start(message: types.Message, state: FSMContext):
     await ensure_user_exists(message.from_user)
     await state.clear()
-    await message.answer(HOME_MENU_TEXT, reply_markup=get_start_keyboard())
+    await _send_home_menu(message)
 
 
 @router.message(StateFilter("*"), F.text == HOME_REPLY_BUTTON_TEXT)

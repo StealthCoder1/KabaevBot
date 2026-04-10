@@ -1,9 +1,9 @@
 BACK_BUTTON_TEXT = "Назад ↩️"
 HOME_REPLY_BUTTON_TEXT = "На главную"
 
-CONTACT_MANAGER_TEXT = "Связаться с менеджером"
+CONTACT_MANAGER_TEXT = "✉️ Связаться с менеджером"
 CONTACT_MANAGER_INLINE_TEXT = "✉️ Связаться с менеджером"
-CONTACT_MANAGER_START_INLINE_TEXT = "💬 Связаться с менеджером"
+CONTACT_MANAGER_START_INLINE_TEXT = "✉️ Связаться с менеджером"
 
 HOME_INLINE_BUTTON_TEXT = "📌 На главную"
 
@@ -20,7 +20,6 @@ MAIN_MENU_VARIANT_TEXT = "Выберите вариант"
 BEST_DEALS_NEXT_STEP_TEXT = "Выберите следующий шаг:"
 
 HOME_MENU_TEXT = (
-    "<b>Что может делать этот бот?</b>\n\n"
     "<b>Ниже представлено меню, которое проведет вас по основным разделам бота ⤵️</b>"
 )
 

@@ -40,6 +40,14 @@ async def _start_contact_flow(message: types.Message, state: FSMContext) -> None
     await message.answer(LEAD_CONTACT_REQUEST_TEXT, reply_markup=get_contact_request_keyboard())
 
 
+async def _show_contact_manager_choices(message: types.Message) -> None:
+    await message.answer(
+        CONTACT_MANAGER_CHOICE_TEXT,
+        parse_mode="HTML",
+        reply_markup=get_manager_contact_keyboard(),
+    )
+
+
 async def _show_back_target_menu(message: types.Message, back_target: str) -> None:
     if back_target == "auto_pick":
         await message.answer(
@@ -98,11 +106,7 @@ def _build_post_like_lead_text(
 @router.callback_query(F.data == "lead:contact_manager")
 async def contact_manager_callback(callback: types.CallbackQuery, state: FSMContext):
     await ensure_user_exists(callback.from_user)
-    await callback.message.answer(
-        CONTACT_MANAGER_CHOICE_TEXT,
-        parse_mode="HTML",
-        reply_markup=get_manager_contact_keyboard(),
-    )
+    await _show_contact_manager_choices(callback.message)
     await callback.answer()
 
 
@@ -153,11 +157,14 @@ async def post_like_callback(callback: types.CallbackQuery, state: FSMContext):
 @router.message(F.text == CONTACT_MANAGER_TEXT)
 async def contact_manager_reply_button_handler(message: types.Message, state: FSMContext):
     await ensure_user_exists(message.from_user)
-    await message.answer(
-        CONTACT_MANAGER_CHOICE_TEXT,
-        parse_mode="HTML",
-        reply_markup=get_manager_contact_keyboard(),
-    )
+    await _show_contact_manager_choices(message)
+
+
+@router.message(Command("manager"))
+async def contact_manager_command_handler(message: types.Message, state: FSMContext):
+    await ensure_user_exists(message.from_user)
+    await state.clear()
+    await _show_contact_manager_choices(message)
 
 
 @router.message(LeadStates.waiting_contact, F.contact)

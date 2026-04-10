@@ -1,4 +1,15 @@
+from aiogram.filters import Command
+
 from tgBot.bot.shared import *
+from tgBot.catalogs import (
+    _auto_category_has_countries,
+    _get_auto_category_label,
+    _get_auto_country_title,
+    _get_auto_engine_title,
+    _get_auto_model_lead_message,
+    _get_auto_model_placeholder_text,
+    _get_auto_model_title,
+)
 
 
 AUTO_PICK_SOURCE_TO_TOKEN = {
@@ -18,6 +29,7 @@ AUTO_BUDGET_MODELS_BODY = (
     "•  пробег,\n"
     "•  комплектация."
 )
+AUTO_BUDGET_SAVINGS_TEXT = "📊 Экономия по сравнению с рынком Беларуси до 40%"
 AUTO_BUDGET_MODELS_FOOTER = "Мы опираемся только на статистику, а значит — на реальные цифры, а не на догадки!"
 MANUAL_PHONE_FLOW_STATES = {
     LeadStates.waiting_phone_country.state,
@@ -94,18 +106,44 @@ def _get_auto_budget_intro_text(
     country_title: str | None = None,
     engine_title: str | None = None,
 ) -> str:
-    lines = [f"Бюджет: <b>{_get_auto_category_label(category_id)}</b>"]
+    header_lines = [f"💵 Бюджет: {_get_auto_category_label(category_id)}"]
     if engine_title:
-        lines.append(f"Топливо: <b>{engine_title.lower()}</b>")
-    lines.append(AUTO_BUDGET_MODELS_BODY)
-    lines.append(f"<b>{AUTO_BUDGET_MODELS_FOOTER}</b>")
-    return "\n".join(lines)
+        header_lines.append(f"⛽️ Тип двигателя: {engine_title.lower()}")
+
+    blocks = [
+        "\n".join(header_lines),
+        AUTO_BUDGET_MODELS_BODY,
+        f"{AUTO_BUDGET_SAVINGS_TEXT}\n<b>{AUTO_BUDGET_MODELS_FOOTER}</b>",
+    ]
+    return "\n\n".join(blocks)
 
 
 async def _clear_manual_phone_state_if_needed(state: FSMContext) -> None:
     current_state = await state.get_state()
     if current_state in MANUAL_PHONE_FLOW_STATES:
         await state.clear()
+
+
+def _get_auto_pick_back_callback_data(source: str) -> str:
+    return {
+        "risks": "guarantees:risks",
+        "quick_main_auction": "quick_main:auction",
+        "quick_main_delivery": "quick_main:delivery",
+        "quick_main_credit": "quick_main:credit",
+        "quick_main_insurance": "quick_main:insurance",
+        "quick_main_hidden_damage": "quick_main:hidden_damage",
+    }.get(source, "guarantees:home")
+
+
+async def _show_auto_pick_menu(message: types.Message, *, source: str = "") -> None:
+    await message.answer(
+        BUDGET_PROMPT_TEXT,
+        parse_mode="HTML",
+        reply_markup=get_price_range_keyboard(
+            back_callback_data=_get_auto_pick_back_callback_data(source),
+            source=source,
+        ),
+    )
 
 
 async def _show_country_picker(
@@ -131,23 +169,15 @@ async def auto_pick_callback(callback: types.CallbackQuery, state: FSMContext):
     await _clear_manual_phone_state_if_needed(state)
     parts = callback.data.split(":", maxsplit=2)
     source = parts[2] if len(parts) == 3 else ""
-    back_callback_data = {
-        "risks": "guarantees:risks",
-        "quick_main_auction": "quick_main:auction",
-        "quick_main_delivery": "quick_main:delivery",
-        "quick_main_credit": "quick_main:credit",
-        "quick_main_insurance": "quick_main:insurance",
-        "quick_main_hidden_damage": "quick_main:hidden_damage",
-    }.get(source, "guarantees:home")
-    await callback.message.answer(
-        BUDGET_PROMPT_TEXT,
-        parse_mode="HTML",
-        reply_markup=get_price_range_keyboard(
-            back_callback_data=back_callback_data,
-            source=source,
-        ),
-    )
+    await _show_auto_pick_menu(callback.message, source=source)
     await callback.answer()
+
+
+@router.message(Command("auto"))
+async def auto_pick_command(message: types.Message, state: FSMContext):
+    await ensure_user_exists(message.from_user)
+    await state.clear()
+    await _show_auto_pick_menu(message)
 
 
 @router.callback_query(F.data.startswith("price:"))

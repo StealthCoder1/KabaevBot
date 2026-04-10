@@ -22,6 +22,62 @@ POLLING_BACKOFF_CONFIG = BackoffConfig(
     factor=float(os.getenv("POLLING_RETRY_FACTOR", "1.5")),
     jitter=float(os.getenv("POLLING_RETRY_JITTER", "0.2")),
 )
+PRIVATE_BOT_COMMANDS = (
+    ("channel", "🔥 Актуальные варианты"),
+    ("auto", "🔎 Подбор автомобиля"),
+    ("moto", "🏍️ Подбор мотоцикла"),
+    ("in_path", "⛴ Авто в пути"),
+    ("faq", "❓ Часто задаваемые вопросы"),
+    ("manager", "💬 Связаться с менеджером"),
+)
+
+
+def _build_private_bot_commands() -> list[types.BotCommand]:
+    return [
+        types.BotCommand(command=command, description=description)
+        for command, description in PRIVATE_BOT_COMMANDS
+    ]
+
+
+async def _configure_bot_commands(bot: Bot) -> None:
+    commands = _build_private_bot_commands()
+    command_scopes = (
+        types.BotCommandScopeDefault(),
+        types.BotCommandScopeAllPrivateChats(),
+    )
+    language_codes = (None, "ru")
+
+    for scope in command_scopes:
+        for language_code in language_codes:
+            await bot.set_my_commands(
+                commands,
+                scope=scope,
+                language_code=language_code,
+            )
+
+    await bot.set_chat_menu_button(menu_button=types.MenuButtonCommands())
+
+    # Remove leftover command lists from scopes that should not expose the private menu.
+    for scope in (
+        types.BotCommandScopeAllGroupChats(),
+        types.BotCommandScopeAllChatAdministrators(),
+    ):
+        for language_code in language_codes:
+            await bot.delete_my_commands(scope=scope, language_code=language_code)
+
+
+async def _clear_legacy_chat_commands(bot: Bot) -> None:
+    language_codes = (None, "ru")
+    for admin_id in get_configured_admin_ids(exclude_user_ids={bot.id}):
+        scope = types.BotCommandScopeChat(chat_id=admin_id)
+        for language_code in language_codes:
+            try:
+                await bot.delete_my_commands(scope=scope, language_code=language_code)
+            except Exception as exc:
+                logger.warning(
+                    f"Не удалось очистить legacy chat commands для chat_id={admin_id}, "
+                    f"language_code={language_code!r}: {exc}"
+                )
 
 
 async def _send_daily_brand_question(bot: Bot) -> None:
@@ -68,6 +124,16 @@ async def start_bot():
         await ensure_channels_config_defaults()
     except Exception as exc:
         logger.error(f"Failed to create default channels config: {exc}")
+
+    try:
+        await _configure_bot_commands(bot)
+    except Exception as exc:
+        logger.error(f"Не удалось настроить меню команд бота: {exc}")
+
+    try:
+        await _clear_legacy_chat_commands(bot)
+    except Exception as exc:
+        logger.error(f"Не удалось очистить legacy chat commands: {exc}")
 
     for admin_id in get_configured_admin_ids(exclude_user_ids={bot.id}):
         try:

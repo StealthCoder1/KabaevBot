@@ -1,4 +1,5 @@
 from aiogram import F, types
+from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 
 from tgBot.bot.shared import _show_moto_model_card, ensure_user_exists, router
@@ -48,21 +49,37 @@ def _get_moto_budget_intro_text(
     )
 
 
+def _get_moto_pick_back_callback_data(source: str) -> str:
+    return {
+        "risks": "guarantees:risks",
+        "quick_main_delivery": "quick_main:delivery",
+    }.get(source, "guarantees:home")
+
+
+async def _show_moto_pick_menu(message: types.Message, *, source: str = "") -> None:
+    await message.answer(
+        MOTO_BUDGET_PROMPT_TEXT,
+        parse_mode="HTML",
+        reply_markup=get_moto_classes_keyboard(
+            back_callback_data=_get_moto_pick_back_callback_data(source),
+        ),
+    )
+
+
 @router.callback_query((F.data == "lead:moto_pick") | F.data.startswith("lead:moto_pick:"))
 async def moto_pick_callback(callback: types.CallbackQuery):
     await ensure_user_exists(callback.from_user)
     parts = callback.data.split(":", maxsplit=2)
     source = parts[2] if len(parts) == 3 else ""
-    back_callback_data = {
-        "risks": "guarantees:risks",
-        "quick_main_delivery": "quick_main:delivery",
-    }.get(source, "guarantees:home")
-    await callback.message.answer(
-        MOTO_BUDGET_PROMPT_TEXT,
-        parse_mode="HTML",
-        reply_markup=get_moto_classes_keyboard(back_callback_data=back_callback_data),
-    )
+    await _show_moto_pick_menu(callback.message, source=source)
     await callback.answer()
+
+
+@router.message(Command("moto"))
+async def moto_pick_command(message: types.Message, state: FSMContext):
+    await ensure_user_exists(message.from_user)
+    await state.clear()
+    await _show_moto_pick_menu(message)
 
 
 @router.callback_query(F.data.startswith("moto_class:"))

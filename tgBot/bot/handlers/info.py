@@ -1,6 +1,53 @@
 from tgBot.bot.shared import *
 
 
+async def _show_channel_menu(message: types.Message) -> None:
+    await message.answer(
+        "🔥 Актуальные варианты публикуем в канале. Нажмите кнопку ниже, чтобы открыть его.",
+        reply_markup=get_quick_main_topic_keyboard(
+            back_callback_data="guarantees:home",
+            include_channel=True,
+        ),
+    )
+
+
+async def _show_auto_in_path_intro(message: types.Message) -> None:
+    await message.answer(
+        "<b>Мы регулярно отслеживаем аукционы 🇺🇸 и отбираем наиболее выгодные варианты.</b>\n\n"
+        "Все представленные ниже авто находятся в продаже и в ближайшее время будут доставлены в Беларусь.",
+        parse_mode="HTML",
+        reply_markup=get_auto_in_path_intro_keyboard(),
+    )
+
+
+async def _show_quick_main_menu(message: types.Message) -> None:
+    await message.answer(
+        "Выберите интересующий вопрос ⤵️",
+        reply_markup=get_quick_main_keyboard(),
+    )
+
+
+@router.message(Command("channel"))
+async def channel_command(message: types.Message, state: FSMContext):
+    await ensure_user_exists(message.from_user)
+    await state.clear()
+    await _show_channel_menu(message)
+
+
+@router.message(Command("in_path"))
+async def auto_in_path_command(message: types.Message, state: FSMContext):
+    await ensure_user_exists(message.from_user)
+    await state.clear()
+    await _show_auto_in_path_intro(message)
+
+
+@router.message(Command("faq"))
+async def quick_main_info_command(message: types.Message, state: FSMContext):
+    await ensure_user_exists(message.from_user)
+    await state.clear()
+    await _show_quick_main_menu(message)
+
+
 @router.callback_query(F.data == "lead:auto_in_transit")
 async def auto_in_transit_callback(callback: types.CallbackQuery, bot: Bot):
     await ensure_user_exists(callback.from_user)
@@ -11,12 +58,7 @@ async def auto_in_transit_callback(callback: types.CallbackQuery, bot: Bot):
 @router.callback_query(F.data == "catalog:auto_in_path")
 async def auto_in_path_catalog_callback(callback: types.CallbackQuery, bot: Bot):
     await ensure_user_exists(callback.from_user)
-    await callback.message.answer(
-        "<b>Мы регулярно отслеживаем аукционы 🇺🇸 и отбираем наиболее выгодные варианты.</b>\n\n"
-        "Все представленные ниже авто находятся в продаже и в ближайшее время будут доставлены в Беларусь.",
-        parse_mode="HTML",
-        reply_markup=get_auto_in_path_intro_keyboard(),
-    )
+    await _show_auto_in_path_intro(callback.message)
     await callback.answer()
 
 
@@ -135,10 +177,7 @@ async def guarantees_home_callback(callback: types.CallbackQuery):
 @router.callback_query(F.data == "info:quick_main")
 async def quick_main_info_callback(callback: types.CallbackQuery):
     await ensure_user_exists(callback.from_user)
-    await callback.message.answer(
-        "Выберите интересующий вопрос ⤵️",
-        reply_markup=get_quick_main_keyboard(),
-    )
+    await _show_quick_main_menu(callback.message)
     await callback.answer()
 
 

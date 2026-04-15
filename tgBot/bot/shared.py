@@ -45,6 +45,7 @@ from tgBot.keyboards import (
     get_auto_countries_keyboard,
     get_auto_engine_models_keyboard,
     get_auto_engines_keyboard,
+    get_auto_in_path_finished_keyboard,
     get_auto_in_path_post_keyboard,
     get_auto_model_actions_keyboard,
     get_contact_request_keyboard,
@@ -56,12 +57,19 @@ from tgBot.keyboards import (
     get_moto_model_actions_keyboard,
     get_manual_phone_request_keyboard,
     get_post_actions_keyboard,
+    get_pricing_countries_keyboard,
+    get_pricing_korea_tech_keyboard,
+    get_pricing_package_detail_keyboard,
+    get_pricing_packages_keyboard,
+    get_pricing_usa_tech_keyboard,
     get_price_range_keyboard,
     get_phone_country_keyboard,
     get_quick_main_auction_keyboard,
+    get_quick_main_back_keyboard,
     get_quick_main_credit_keyboard,
     get_quick_main_delivery_keyboard,
     get_quick_main_keyboard,
+    get_quick_main_request_keyboard,
     get_quick_main_topic_keyboard,
     get_start_keyboard,
     get_user_reply_keyboard,
@@ -102,7 +110,7 @@ DEFAULT_AUTO_IN_PATH_CHANNEL_TITLE = "Авто в пути"
 LEADS_CHANNEL_CODE = "leads_target"
 DEFAULT_LEADS_CHANNEL_TITLE = "Лиды"
 POST_LIKE_PROMPT_TEXT = "Если пост понравился, нажмите кнопку ниже."
-AUTO_IN_PATH_BROWSER_PROMPT_TEXT = "Выберите, что сделать с этим вариантом."
+AUTO_IN_PATH_BROWSER_PROMPT_TEXT = "Выберите, что сделать с этим автомобилем:"
 AUTO_IN_PATH_STICKER_ENV_NAME = "AUTO_IN_PATH_STICKER_ID"
 PERMANENT_USER_DELIVERY_ERROR_PATTERNS = (
     "chat not found",
@@ -215,11 +223,12 @@ async def _show_moto_model_card(
     *,
     class_id: str,
     model_id: str,
+    country_id: str = "usa",
 ) -> None:
     text = _get_moto_model_description_text(class_id, model_id)
     await callback.message.answer(
         text,
-        reply_markup=get_moto_model_actions_keyboard(class_id, model_id),
+        reply_markup=get_moto_model_actions_keyboard(class_id, model_id, country_id),
     )
 
 
@@ -639,6 +648,30 @@ async def save_auto_in_transit_post(message: types.Message) -> None:
             await session.rollback()
 
 
+async def set_auto_in_transit_posts_media_group_id(
+    channel_id_value: int,
+    message_ids: list[int],
+    media_group_id: str,
+) -> None:
+    if AutoInTransitPost is None or not message_ids:
+        return
+
+    async with async_session() as session:
+        result = await session.execute(
+            select(AutoInTransitPost).where(
+                AutoInTransitPost.channel_id == channel_id_value,
+                AutoInTransitPost.message_id.in_(message_ids),
+            )
+        )
+        rows = result.scalars().all()
+        if not rows:
+            return
+
+        for row in rows:
+            row.media_group_id = media_group_id
+        await session.commit()
+
+
 async def get_auto_in_transit_copy_batches(*, newest_first: bool = False) -> list[list[int]]:
     if AutoInTransitPost is None:
         return []
@@ -884,20 +917,22 @@ async def send_auto_in_transit_post_to_user(
     message_ids = sorted(batches[batch_index])
     source_message_id = message_ids[0]
     next_post_index = batch_index + 1 if batch_index + 1 < len(batches) else None
-    reply_markup = get_auto_in_path_post_keyboard(
-        source_channel_id,
-        source_message_id,
-        next_post_index=next_post_index,
-    )
 
     if len(message_ids) == 1:
         message_id = source_message_id
         try:
-            await bot.copy_message(
+            copied_message = await bot.copy_message(
                 chat_id=user_id,
                 from_chat_id=source_channel_id,
                 message_id=message_id,
-                reply_markup=reply_markup,
+            )
+            await _send_auto_in_path_actions_prompt(
+                bot,
+                user_id,
+                source_channel_id,
+                source_message_id,
+                next_post_index=next_post_index,
+                reply_to_message_id=_copied_message_id(copied_message),
             )
             return True
         except Exception as exc:

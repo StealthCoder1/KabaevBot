@@ -708,6 +708,7 @@ def _get_moto_class_models(class_id: str) -> list[dict]:
 
 def _get_moto_models_keyboard(
     class_id: str,
+    country_id: str | None = None,
     back_callback_data: str = "lead:moto_pick",
 ) -> types.InlineKeyboardMarkup | None:
     models = _get_moto_class_models(class_id)
@@ -723,7 +724,12 @@ def _get_moto_models_keyboard(
         title = str(model.get("title", "")).strip()
         if not model_id or not title:
             continue
-        kb.button(text=title, callback_data=f"moto_model:{class_id}:{model_id}")
+        callback_data = (
+            f"moto_model:{class_id}:{country_id}:{model_id}"
+            if country_id
+            else f"moto_model:{class_id}:{model_id}"
+        )
+        kb.button(text=title, callback_data=callback_data)
         rows.append(1)
 
     if not rows:

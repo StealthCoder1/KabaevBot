@@ -49,21 +49,32 @@ def get_auto_in_path_post_keyboard(
 ) -> types.InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
     kb.button(
-        text="😍 Нравится",
+        text="✉️ Узнать подробности",
         callback_data=f"post_like:{source_chat_id}:{source_message_id}",
     )
-    if next_post_index is not None:
-        kb.button(
-            text="🚗 Хочу другую",
-            callback_data=f"auto_in_path:next:{next_post_index}",
-        )
-    kb.button(text=HOME_INLINE_BUTTON_TEXT, callback_data="guarantees:home")
-    rows = [1]
-    if next_post_index is not None:
-        rows.append(1)
-    rows.append(1)
-    kb.adjust(*rows)
+    kb.button(text="📞 Связаться с менеджером", callback_data="lead:contact_manager")
+    next_callback_data = (
+        f"auto_in_path:next:{next_post_index}"
+        if next_post_index is not None
+        else "auto_in_path:next:none"
+    )
+    kb.button(
+        text="🔎 Показать другой автомобиль «В ПУТИ»",
+        callback_data=next_callback_data,
+    )
+    kb.button(text="↩️ Вернуться в меню", callback_data="guarantees:home")
+    kb.adjust(1, 1, 1, 1)
     return kb.as_markup()
+
+
+def get_auto_in_path_finished_keyboard() -> types.InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    kb.button(text="🔎 Индивидуальный подбор автомобиля", callback_data="lead:auto_pick")
+    kb.button(text="📞 Связаться с менеджером", callback_data="lead:contact_manager:phone")
+    kb.button(text="↩️ Вернуться в меню", callback_data="guarantees:home")
+    kb.adjust(1, 1, 1)
+    return kb.as_markup()
+
 
 def get_start_keyboard() -> types.InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
@@ -217,15 +228,24 @@ def get_moto_country_keyboard(
 ) -> types.InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
     kb.button(text="🇺🇸 США", callback_data=f"moto_country:{class_id}:usa")
+    if class_id == "20_30k":
+        kb.button(text="🇰🇷 Корея", callback_data=f"moto_country:{class_id}:korea")
     kb.button(text=BACK_BUTTON_TEXT, callback_data=back_callback_data)
-    kb.adjust(1, 1)
+    kb.adjust(1, 1, 1)
     return kb.as_markup()
 
-def get_moto_model_actions_keyboard(class_id: str, model_id: str) -> types.InlineKeyboardMarkup:
+def get_moto_model_actions_keyboard(
+    class_id: str,
+    model_id: str,
+    country_id: str = "usa",
+) -> types.InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
-    kb.button(text="😍Хочу этот мото", callback_data=f"moto_model:want:{class_id}:{model_id}")
+    kb.button(
+        text="😍Хочу этот мото",
+        callback_data=f"moto_model:want:{class_id}:{country_id}:{model_id}",
+    )
     kb.button(text=HOME_INLINE_BUTTON_TEXT, callback_data="guarantees:home")
-    kb.button(text=BACK_BUTTON_TEXT, callback_data=f"moto_country:{class_id}:usa")
+    kb.button(text=BACK_BUTTON_TEXT, callback_data=f"moto_country:{class_id}:{country_id}")
     kb.adjust(1, 1, 1)
     return kb.as_markup()
 
@@ -289,6 +309,81 @@ def get_quick_main_topic_keyboard(
     rows.extend([1, 1])
     kb.adjust(*rows)
     return kb.as_markup()
+
+
+def get_quick_main_request_keyboard(
+    *,
+    back_callback_data: str = "info:quick_main",
+) -> types.InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    kb.button(text="📞 Оставить заявку", callback_data="lead:contact_manager:phone")
+    kb.button(text="↩️ Назад", callback_data=back_callback_data)
+    kb.adjust(1, 1)
+    return kb.as_markup()
+
+
+def get_quick_main_back_keyboard(
+    *,
+    back_callback_data: str = "info:quick_main",
+) -> types.InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    kb.button(text="↩️ Назад", callback_data=back_callback_data)
+    kb.adjust(1)
+    return kb.as_markup()
+
+
+def get_pricing_countries_keyboard() -> types.InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    kb.button(text="🇰🇷 Корея", callback_data="pricing:country:kr")
+    kb.button(text="🇨🇳 Китай", callback_data="pricing:country:cn")
+    kb.button(text="🇺🇸 США", callback_data="pricing:country:us")
+    kb.button(text="↩️ Назад", callback_data="info:quick_main")
+    kb.adjust(1, 1, 1, 1)
+    return kb.as_markup()
+
+
+def get_pricing_usa_tech_keyboard() -> types.InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    kb.button(text="🚘 Авто", callback_data="pricing:tech:us:auto")
+    kb.button(text="🏍 Мото / Гидро / Квадро", callback_data="pricing:tech:us:moto")
+    kb.button(text="↩️ Назад", callback_data="quick_main:pricing")
+    kb.adjust(1, 1, 1)
+    return kb.as_markup()
+
+
+def get_pricing_korea_tech_keyboard() -> types.InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    kb.button(text="🚘 Авто", callback_data="pricing:tech:kr:auto")
+    kb.button(text="🏍 Мото / Гидро / Квадро", callback_data="pricing:tech:kr:moto")
+    kb.button(text="↩️ Назад", callback_data="quick_main:pricing")
+    kb.adjust(1, 1, 1)
+    return kb.as_markup()
+
+
+def get_pricing_packages_keyboard(tech: str) -> types.InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    kb.button(text="💻 Пакет «СТАРТ»", callback_data=f"pricing:pkg:us:{tech}:start")
+    kb.button(text="🏁 Пакет «СТАНДАРТ»", callback_data=f"pricing:pkg:us:{tech}:standard")
+    kb.button(text="🔑 Пакет «ПОД КЛЮЧ»", callback_data=f"pricing:pkg:us:{tech}:key")
+    kb.button(text="↩️ Назад", callback_data="pricing:country:us")
+    kb.adjust(1, 1, 1, 1)
+    return kb.as_markup()
+
+
+def get_pricing_package_detail_keyboard(
+    tech: str,
+    back_callback_data: str | None = None,
+) -> types.InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    kb.button(text="📄 Заключить договор", url=MANAGER_TELEGRAM_URL)
+    kb.button(text="📞 Связаться с менеджером", callback_data="lead:contact_manager:phone")
+    kb.button(
+        text="↩️ Просмотреть другой пакет",
+        callback_data=back_callback_data or f"pricing:tech:us:{tech}",
+    )
+    kb.adjust(1, 1, 1)
+    return kb.as_markup()
+
 
 def get_quick_main_auction_keyboard() -> types.InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()

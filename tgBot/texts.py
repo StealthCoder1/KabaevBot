@@ -8,10 +8,7 @@ CONTACT_MANAGER_START_INLINE_TEXT = "✉️ Связаться с менедже
 HOME_INLINE_BUTTON_TEXT = "📌 На главную"
 
 BUDGET_PROMPT_TEXT = "<b>💸 В каком бюджете ищете автомобиль?</b>"
-LEAD_CONTACT_REQUEST_TEXT = (
-    "🚀 Введите номер — и стартуем с подбором\n\n"
-    "Просто нажмите кнопку 👇"
-)
+PHONE_COUNTRY_PROMPT_TEXT = "🌍 Выберите страну номера, который хотите оставить:"
 LEAD_SAVED_TEXT = "Спасибо. Менеджер свяжется с вами."
 CONTACT_MANAGER_CHOICE_TEXT = "<b>Выберите способ связи с менеджером ⤵️</b>"
 

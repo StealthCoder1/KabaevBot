@@ -34,19 +34,9 @@ AUTO_ENGINE_BUTTON_ORDER = {
     "diesel": 1,
     "electric": 2,
 }
-AUTO_MODEL_SOURCE_OVERRIDES = {
-    ("10_15k", "gasoline"): ("30k_plus", "usa", "gasoline"),
-}
-AUTO_MODEL_TITLE_OVERRIDES = {
-    ("10_15k", "gasoline", "range_rover_velar"): "Land Rover Range Rover Velar",
-}
-MOTO_MODEL_OVERRIDES = {
-    "5_10k": (
-        {"model_id": "cbr1000rr_2008", "title": "Honda CBR1000RR"},
-        {"model_id": "mt09", "title": "Yamaha MT-09"},
-        {"model_id": "z900_2017", "title": "Kawasaki Z900"},
-    ),
-}
+AUTO_MODEL_SOURCE_OVERRIDES = {}
+AUTO_MODEL_TITLE_OVERRIDES = {}
+MOTO_MODEL_OVERRIDES = {}
 
 
 def _format_budget_label(label: str) -> str:
@@ -771,3 +761,11 @@ def _get_moto_model_description_text(class_id: str, model_id: str) -> str:
 
     title = _get_moto_model_title(class_id, model_id) or model_id
     return f"{title}\n\n{_get_moto_model_placeholder_text()}"
+
+
+def _get_moto_model_photo_path(class_id: str, model_id: str) -> str | None:
+    model = _get_moto_model_config(class_id, model_id)
+    if not model:
+        return None
+    value = str(model.get("photo_path", "")).strip()
+    return value or None

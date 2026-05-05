@@ -35,6 +35,7 @@ from tgBot.catalogs import (
     _get_moto_model_description_text,
     _get_moto_model_lead_message,
     _get_moto_model_placeholder_text,
+    _get_moto_model_photo_path,
     _get_moto_model_title,
     _get_moto_models_keyboard,
     _join_catalog_lines,
@@ -48,7 +49,6 @@ from tgBot.keyboards import (
     get_auto_in_path_finished_keyboard,
     get_auto_in_path_post_keyboard,
     get_auto_model_actions_keyboard,
-    get_contact_request_keyboard,
     get_guarantees_keyboard,
     get_guarantees_risks_keyboard,
     get_manager_contact_keyboard,
@@ -82,13 +82,13 @@ from tgBot.texts import (
     CONTACT_MANAGER_TEXT,
     HOME_MENU_TEXT,
     HOME_REPLY_BUTTON_TEXT,
-    LEAD_CONTACT_REQUEST_TEXT,
     LEAD_SAVED_TEXT,
     MAIN_MENU_ACTION_TEXT,
     MAIN_MENU_VARIANT_TEXT,
     MOTO_HINT_FALLBACK_TEXT,
     MOTO_INTRO_FALLBACK_TEXT,
     MOTO_MODEL_RESOLVE_ERROR_TEXT,
+    PHONE_COUNTRY_PROMPT_TEXT,
 )
 
 User = db_models.User
@@ -203,11 +203,22 @@ async def _show_auto_model_card(
             path_obj = Path(__file__).resolve().parents[2] / path_obj
         if path_obj.exists():
             try:
-                await callback.message.answer_photo(
-                    photo=types.FSInputFile(path_obj),
-                    caption=text,
-                    reply_markup=reply_markup,
-                )
+                if len(text) <= 1024:
+                    await callback.message.answer_photo(
+                        photo=types.FSInputFile(path_obj),
+                        caption=text,
+                        parse_mode="HTML",
+                        reply_markup=reply_markup,
+                    )
+                else:
+                    await callback.message.answer_photo(
+                        photo=types.FSInputFile(path_obj),
+                    )
+                    await callback.message.answer(
+                        text,
+                        parse_mode="HTML",
+                        reply_markup=reply_markup,
+                    )
                 return
             except Exception as exc:
                 logger.error(
@@ -215,7 +226,7 @@ async def _show_auto_model_card(
                     f"/{engine_id}/{model_id}: {exc}"
                 )
 
-    await callback.message.answer(text, reply_markup=reply_markup)
+    await callback.message.answer(text, parse_mode="HTML", reply_markup=reply_markup)
 
 
 async def _show_moto_model_card(
@@ -226,9 +237,54 @@ async def _show_moto_model_card(
     country_id: str = "usa",
 ) -> None:
     text = _get_moto_model_description_text(class_id, model_id)
-    await callback.message.answer(
-        text,
-        reply_markup=get_moto_model_actions_keyboard(class_id, model_id, country_id),
+    reply_markup = get_moto_model_actions_keyboard(class_id, model_id, country_id)
+    photo_path = _get_moto_model_photo_path(class_id, model_id)
+    if photo_path:
+        path_obj = Path(photo_path)
+        if not path_obj.is_absolute():
+            path_obj = Path(__file__).resolve().parents[2] / path_obj
+        if path_obj.exists():
+            try:
+                await callback.message.answer_photo(
+                    photo=types.FSInputFile(path_obj),
+                    caption=text,
+                    parse_mode="HTML",
+                    reply_markup=reply_markup,
+                )
+                return
+            except Exception as exc:
+                logger.error(
+                    f"Не удалось отправить фото карточки мото {class_id}/{country_id}/{model_id}: {exc}"
+                )
+
+    await callback.message.answer(text, parse_mode="HTML", reply_markup=reply_markup)
+
+
+async def start_phone_country_flow(
+    message: types.Message,
+    state: FSMContext,
+    *,
+    lead_action: str,
+    lead_message_text: str | None = None,
+    lead_price_range: str | None = None,
+    back_target: str = "home",
+    back_callback_data: str = "guarantees:home",
+    extra_state_data: dict | None = None,
+) -> None:
+    await state.set_state(LeadStates.waiting_phone_country)
+    state_data = {
+        "pending_lead_action": lead_action,
+        "pending_lead_message_text": lead_message_text,
+        "pending_lead_price_range": lead_price_range,
+        "pending_back_target": back_target,
+        "manual_phone_country": None,
+    }
+    if extra_state_data:
+        state_data.update(extra_state_data)
+    await state.update_data(**state_data)
+    await message.answer(
+        PHONE_COUNTRY_PROMPT_TEXT,
+        reply_markup=get_phone_country_keyboard(back_callback_data=back_callback_data),
     )
 
 

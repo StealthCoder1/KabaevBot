@@ -4,6 +4,7 @@ from tgBot.bot.shared import *
 from tgBot.catalogs import (
     _auto_category_has_countries,
     _get_auto_category_label,
+    _get_auto_country_engines,
     _get_auto_country_title,
     _get_auto_engine_title,
     _get_auto_model_lead_message,
@@ -97,6 +98,8 @@ def _build_auto_price_range_label(
     category_label = _get_auto_category_label(category_id)
     country_title = _get_auto_country_title(category_id, country_id) or country_id
     engine_title = _get_auto_engine_title(category_id, country_id, engine_id) or engine_id
+    if engine_id == "all" or str(engine_title).strip().lower() == "все":
+        return f"{category_label} / {country_title}"
     return f"{category_label} / {country_title} / {engine_title}"
 
 
@@ -213,6 +216,27 @@ async def price_country_callback(callback: types.CallbackQuery, state: FSMContex
     _, category_id, country_id, *rest = parts
     source_token = rest[0] if rest else ""
     source = _token_to_source(source_token)
+    engines = _get_auto_country_engines(category_id, country_id)
+    if len(engines) == 1:
+        engine_id = str(engines[0].get("id", "")).strip()
+        engine_title = _get_auto_engine_title(category_id, country_id, engine_id) or engine_id
+        await callback.message.answer(
+            _get_auto_budget_intro_text(
+                category_id,
+                country_title=_get_auto_country_title(category_id, country_id) or country_id,
+                engine_title=None if engine_id == "all" or str(engine_title).strip().lower() == "все" else engine_title,
+            ),
+            parse_mode="HTML",
+            reply_markup=get_auto_engine_models_keyboard(
+                category_id,
+                country_id,
+                engine_id,
+                back_callback_data=_get_price_callback_data(category_id, source),
+                source_token=source_token,
+            ),
+        )
+        await callback.answer()
+        return
 
     await callback.message.answer(
         "<b>Выберите тип двигателя</b>",
@@ -240,6 +264,8 @@ async def price_engine_callback(callback: types.CallbackQuery, state: FSMContext
     source_token = rest[0] if rest else ""
     country_title = _get_auto_country_title(category_id, country_id) or country_id
     engine_title = _get_auto_engine_title(category_id, country_id, engine_id) or engine_id
+    if engine_id == "all" or str(engine_title).strip().lower() == "все":
+        engine_title = None
 
     await callback.message.answer(
         _get_auto_budget_intro_text(
@@ -331,32 +357,29 @@ async def auto_model_leave_phone_callback(callback: types.CallbackQuery, state: 
     )
     price_range_label = _build_auto_price_range_label(category_id, country_id, engine_id)
 
-    await state.set_state(LeadStates.waiting_phone_country)
-    await state.update_data(
-        pending_lead_action="auto_model_leave_phone",
-        pending_lead_message_text=model_title,
-        pending_lead_price_range=price_range_label,
-        pending_back_target="home",
-        manual_phone_country=None,
-        manual_phone_context={
-            "category_id": category_id,
-            "country_id": country_id,
-            "engine_id": engine_id,
-            "model_id": model_id,
-            "source_token": source_token,
-        },
-    )
-    await callback.message.answer(
-        "🌍 Выберите страну номера, который хотите оставить:",
-        reply_markup=get_phone_country_keyboard(
-            back_callback_data=_get_auto_model_pick_callback_data(
-                category_id,
-                country_id,
-                engine_id,
-                model_id,
-                source_token,
-            ),
+    await start_phone_country_flow(
+        callback.message,
+        state,
+        lead_action="auto_model_leave_phone",
+        lead_message_text=model_title,
+        lead_price_range=price_range_label,
+        back_target="home",
+        back_callback_data=_get_auto_model_pick_callback_data(
+            category_id,
+            country_id,
+            engine_id,
+            model_id,
+            source_token,
         ),
+        extra_state_data={
+            "manual_phone_context": {
+                "category_id": category_id,
+                "country_id": country_id,
+                "engine_id": engine_id,
+                "model_id": model_id,
+                "source_token": source_token,
+            },
+        },
     )
     await callback.answer()
 
@@ -404,14 +427,14 @@ async def max_profit_want_callback(
 ):
     await ensure_user_exists(callback.from_user)
     lot_title = (await state.get_data()).get("max_profit_lot_title") or "Выгодный лот"
-    await state.set_state(LeadStates.waiting_contact)
-    await state.update_data(
-        pending_lead_action="max_profit_want",
-        pending_lead_message_text=lot_title,
-        pending_lead_price_range=None,
-        pending_back_target="home",
+    await start_phone_country_flow(
+        callback.message,
+        state,
+        lead_action="max_profit_want",
+        lead_message_text=lot_title,
+        back_target="home",
+        back_callback_data="guarantees:home",
     )
-    await callback.message.answer(LEAD_CONTACT_REQUEST_TEXT, reply_markup=get_contact_request_keyboard())
     await callback.answer()
 
 

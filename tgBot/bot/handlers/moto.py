@@ -2,7 +2,12 @@ from aiogram import F, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 
-from tgBot.bot.shared import _show_moto_model_card, ensure_user_exists, router
+from tgBot.bot.shared import (
+    _show_moto_model_card,
+    ensure_user_exists,
+    router,
+    start_phone_country_flow,
+)
 from tgBot.catalogs import (
     _get_moto_class_config,
     _get_moto_class_display_name,
@@ -12,9 +17,7 @@ from tgBot.catalogs import (
     _get_moto_models_keyboard,
 )
 from tgBot.keyboards import (
-    get_contact_request_keyboard,
     get_moto_classes_keyboard,
-    get_moto_country_keyboard,
 )
 from tgBot.states import LeadStates
 from tgBot.texts import (
@@ -93,15 +96,25 @@ async def moto_pick_command(message: types.Message, state: FSMContext):
 async def moto_class_callback(callback: types.CallbackQuery):
     await ensure_user_exists(callback.from_user)
     budget_id = callback.data.split(":", maxsplit=1)[1]
-
-    await callback.message.answer(
-        "<b>Из какой страны рассматриваете мотоцикл?</b>",
-        parse_mode="HTML",
-        reply_markup=get_moto_country_keyboard(
-            budget_id,
-            back_callback_data="lead:moto_pick",
-        ),
+    budget_name = _get_moto_class_display_name(budget_id) or budget_id
+    country_title = _get_moto_country_title(MOTO_COUNTRY_ID)
+    models_markup = _get_moto_models_keyboard(
+        budget_id,
+        country_id=MOTO_COUNTRY_ID,
+        back_callback_data="lead:moto_pick",
     )
+
+    if models_markup is not None:
+        await callback.message.answer(
+            _get_moto_budget_intro_text(budget_name, country_title),
+            parse_mode="HTML",
+            reply_markup=models_markup,
+        )
+    else:
+        await callback.message.answer(
+            f"Вы выбрали бюджет: {budget_name} / {country_title}.\n"
+            "Запрос принят, менеджер поможет с подбором."
+        )
     await callback.answer()
 
 
@@ -139,8 +152,13 @@ async def moto_country_callback(callback: types.CallbackQuery):
 
 
 @router.callback_query(F.data.startswith("moto_model:") & (~F.data.startswith("moto_model:want:")))
-async def moto_model_callback(callback: types.CallbackQuery):
+async def moto_model_callback(callback: types.CallbackQuery, state: FSMContext):
     await ensure_user_exists(callback.from_user)
+    if await state.get_state() in {
+        LeadStates.waiting_phone_country.state,
+        LeadStates.waiting_manual_phone.state,
+    }:
+        await state.clear()
     parts = callback.data.split(":")
     if len(parts) == 3:
         _, budget_id, model_id = parts
@@ -185,16 +203,13 @@ async def moto_model_want_callback(callback: types.CallbackQuery, state: FSMCont
         await callback.answer(MOTO_MODEL_RESOLVE_ERROR_TEXT)
         return
 
-    await state.set_state(LeadStates.waiting_contact)
-    await state.update_data(
-        pending_lead_action="moto_model_want",
-        pending_lead_message_text=f"{budget_name} / {country_title}: {lead_message}",
-        pending_lead_price_range=f"Мото / {budget_name} / {country_title}",
-        pending_back_target="moto_pick",
-    )
-    await callback.message.answer(
-        "🏍️ Отличный выбор. Отправьте номер, и подготовим подборку лотов по этому мото.\n\n"
-        "Нажмите кнопку ниже 👇",
-        reply_markup=get_contact_request_keyboard(),
+    await start_phone_country_flow(
+        callback.message,
+        state,
+        lead_action="moto_model_want",
+        lead_message_text=f"{budget_name} / {country_title}: {lead_message}",
+        lead_price_range=f"Мото / {budget_name} / {country_title}",
+        back_target="moto_pick",
+        back_callback_data=f"moto_model:{budget_id}:{country_id}:{model_id}",
     )
     await callback.answer()

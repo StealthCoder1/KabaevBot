@@ -30,14 +30,13 @@ def _normalize_phone_for_country(text: str, country_code: str) -> str | None:
 
 async def _start_contact_flow(message: types.Message, state: FSMContext) -> None:
     await ensure_user_exists(message.from_user)
-    await state.set_state(LeadStates.waiting_contact)
-    await state.update_data(
-        pending_lead_action="contact_manager",
-        pending_lead_message_text=None,
-        pending_lead_price_range=None,
-        pending_back_target="home",
+    await start_phone_country_flow(
+        message,
+        state,
+        lead_action="contact_manager",
+        back_target="home",
+        back_callback_data="lead:contact_manager",
     )
-    await message.answer(LEAD_CONTACT_REQUEST_TEXT, reply_markup=get_contact_request_keyboard())
 
 
 async def _show_contact_manager_choices(message: types.Message) -> None:
@@ -106,6 +105,7 @@ def _build_post_like_lead_text(
 @router.callback_query(F.data == "lead:contact_manager")
 async def contact_manager_callback(callback: types.CallbackQuery, state: FSMContext):
     await ensure_user_exists(callback.from_user)
+    await state.clear()
     await _show_contact_manager_choices(callback.message)
     await callback.answer()
 
@@ -140,16 +140,14 @@ async def post_like_callback(callback: types.CallbackQuery, state: FSMContext):
         source_message_id,
     )
 
-    await state.set_state(LeadStates.waiting_contact)
-    await state.update_data(
-        pending_lead_action="post_like",
-        pending_lead_message_text=lead_message_text,
-        pending_lead_price_range=lead_price_range,
-        pending_back_target="home",
-    )
-    await callback.message.answer(
-        LEAD_CONTACT_REQUEST_TEXT,
-        reply_markup=get_contact_request_keyboard(),
+    await start_phone_country_flow(
+        callback.message,
+        state,
+        lead_action="post_like",
+        lead_message_text=lead_message_text,
+        lead_price_range=lead_price_range,
+        back_target="home",
+        back_callback_data="guarantees:home",
     )
     await callback.answer()
 
@@ -171,9 +169,15 @@ async def contact_manager_command_handler(message: types.Message, state: FSMCont
 async def collect_contact_from_button(message: types.Message, state: FSMContext, bot: Bot):
     contact = message.contact
     if contact is None or not contact.phone_number:
-        await message.answer(
-            "Не удалось получить номер. Нажмите кнопку ниже ещё раз.",
-            reply_markup=get_contact_request_keyboard(),
+        state_data = await state.get_data()
+        await start_phone_country_flow(
+            message,
+            state,
+            lead_action=state_data.get("pending_lead_action") or "contact_manager",
+            lead_message_text=state_data.get("pending_lead_message_text"),
+            lead_price_range=state_data.get("pending_lead_price_range"),
+            back_target=state_data.get("pending_back_target") or "home",
+            back_callback_data="guarantees:home",
         )
         return
 
@@ -225,10 +229,15 @@ async def collect_contact(message: types.Message, state: FSMContext, bot: Bot):
         name = (message.from_user.full_name if message.from_user else "").strip()
 
     if not phone:
-        await message.answer(
-            "Не удалось распознать номер.\n"
-            "Отправьте номер в формате +79991234567\n"
-            "или сообщением вида: Иван +79991234567."
+        state_data = await state.get_data()
+        await start_phone_country_flow(
+            message,
+            state,
+            lead_action=state_data.get("pending_lead_action") or "contact_manager",
+            lead_message_text=state_data.get("pending_lead_message_text"),
+            lead_price_range=state_data.get("pending_lead_price_range"),
+            back_target=state_data.get("pending_back_target") or "home",
+            back_callback_data="guarantees:home",
         )
         return
 

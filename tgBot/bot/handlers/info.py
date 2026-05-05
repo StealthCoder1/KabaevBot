@@ -393,8 +393,9 @@ async def guarantees_risks_callback(callback: types.CallbackQuery):
 
 
 @router.callback_query(F.data == "guarantees:home")
-async def guarantees_home_callback(callback: types.CallbackQuery):
+async def guarantees_home_callback(callback: types.CallbackQuery, state: FSMContext):
     await ensure_user_exists(callback.from_user)
+    await state.clear()
     await callback.message.answer(
         HOME_MENU_TEXT,
         reply_markup=get_start_keyboard(),

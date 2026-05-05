@@ -50,7 +50,7 @@ def get_auto_in_path_post_keyboard(
     kb = InlineKeyboardBuilder()
     kb.button(
         text="✉️ Узнать подробности",
-        callback_data=f"post_like:{source_chat_id}:{source_message_id}",
+        url=MANAGER_TELEGRAM_URL,
     )
     kb.button(text="📞 Связаться с менеджером", callback_data="lead:contact_manager")
     next_callback_data = (
@@ -228,10 +228,8 @@ def get_moto_country_keyboard(
 ) -> types.InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
     kb.button(text="🇺🇸 США", callback_data=f"moto_country:{class_id}:usa")
-    if class_id == "20_30k":
-        kb.button(text="🇰🇷 Корея", callback_data=f"moto_country:{class_id}:korea")
     kb.button(text=BACK_BUTTON_TEXT, callback_data=back_callback_data)
-    kb.adjust(1, 1, 1)
+    kb.adjust(1, 1)
     return kb.as_markup()
 
 def get_moto_model_actions_keyboard(
@@ -245,7 +243,7 @@ def get_moto_model_actions_keyboard(
         callback_data=f"moto_model:want:{class_id}:{country_id}:{model_id}",
     )
     kb.button(text=HOME_INLINE_BUTTON_TEXT, callback_data="guarantees:home")
-    kb.button(text=BACK_BUTTON_TEXT, callback_data=f"moto_country:{class_id}:{country_id}")
+    kb.button(text=BACK_BUTTON_TEXT, callback_data=f"moto_class:{class_id}")
     kb.adjust(1, 1, 1)
     return kb.as_markup()
 
@@ -448,12 +446,3 @@ def get_admin_keyboard() -> types.ReplyKeyboardMarkup:
     kb.button(text="Канал лидов")
     kb.adjust(1, 1, 1, 1)
     return kb.as_markup(resize_keyboard=True)
-
-def get_contact_request_keyboard() -> types.ReplyKeyboardMarkup:
-    return types.ReplyKeyboardMarkup(
-        keyboard=[
-            [types.KeyboardButton(text="📱 Отправить номер", request_contact=True)],
-        ],
-        resize_keyboard=True,
-        one_time_keyboard=True,
-    )

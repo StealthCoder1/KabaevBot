@@ -1,4 +1,5 @@
 import copy
+import html
 import json
 from pathlib import Path
 
@@ -565,7 +566,7 @@ def _get_auto_model_description_text(
     if not model:
         return _get_auto_model_placeholder_text()
 
-    text = _join_catalog_lines(model.get("description_lines") or model.get("screen_lines"))
+    text = _format_auto_catalog_lines(model.get("description_lines") or model.get("screen_lines"))
     if text.strip():
         return text
 
@@ -575,7 +576,7 @@ def _get_auto_model_description_text(
         country_id=country_id,
         engine_id=engine_id,
     ) or model_id
-    return f"{title}\n\n{_get_auto_model_placeholder_text()}"
+    return f"{html.escape(title, quote=False)}\n\n{html.escape(_get_auto_model_placeholder_text(), quote=False)}"
 
 
 def _get_auto_model_photo_path(
@@ -640,6 +641,77 @@ def _join_catalog_lines(lines: object) -> str:
     if isinstance(lines, list):
         return "\n".join(str(line) for line in lines)
     return ""
+
+
+def _normalize_catalog_lines(lines: object) -> list[str]:
+    if isinstance(lines, str):
+        return lines.splitlines()
+    if isinstance(lines, list):
+        return [str(line) for line in lines]
+    return []
+
+
+def _split_label(line: str) -> tuple[str, str] | None:
+    label, separator, remainder = line.partition(":")
+    if not separator:
+        return None
+    return label, remainder.strip()
+
+
+def _format_auto_intro_line(line: str) -> str:
+    title_part, separator, description_part = line.partition(" — ")
+    if not separator:
+        return f"<b>{html.escape(line, quote=False)}</b>"
+    title_html = html.escape(title_part, quote=False)
+    description_html = html.escape(description_part, quote=False)
+    return f"<b>{title_html}</b>{separator}{description_html}"
+
+
+def _format_auto_catalog_lines(lines: object) -> str:
+    prepared_lines = _normalize_catalog_lines(lines)
+    if not prepared_lines:
+        return ""
+
+    formatted_lines: list[str] = []
+    first_content_idx = next((idx for idx, line in enumerate(prepared_lines) if line.strip()), None)
+    for idx, raw_line in enumerate(prepared_lines):
+        if not raw_line:
+            formatted_lines.append("")
+            continue
+
+        escaped_line = html.escape(raw_line, quote=False)
+        if idx == first_content_idx:
+            formatted_lines.append(_format_auto_intro_line(raw_line))
+            continue
+
+        if raw_line == "Техническая часть:":
+            formatted_lines.append("<b>Техническая часть:</b>")
+            continue
+
+        if raw_line.startswith("Топовые опции:"):
+            parts = _split_label(raw_line)
+            if parts is None:
+                formatted_lines.append(f"<blockquote expandable>{escaped_line}</blockquote>")
+            else:
+                label, value = parts
+                label_html = html.escape(label, quote=False)
+                value_html = html.escape(value, quote=False)
+                formatted_lines.append(
+                    f"<blockquote expandable><b>{label_html}:</b> {value_html}</blockquote>"
+                )
+            continue
+
+        if "Стоимость в Беларуси" in raw_line:
+            formatted_lines.append(f"<b>{escaped_line}</b>")
+            continue
+
+        if raw_line == "Цена автомобилей в Республике Беларусь указана с учетом доставки и льготной таможни.":
+            formatted_lines.append(f"<i>{escaped_line}</i>")
+            continue
+
+        formatted_lines.append(escaped_line)
+
+    return "\n".join(formatted_lines)
 
 
 def _get_moto_intro_texts() -> tuple[str, str]:

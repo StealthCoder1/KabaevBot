@@ -312,19 +312,23 @@ async def auto_model_contact_manager_callback(callback: types.CallbackQuery, sta
     await ensure_user_exists(callback.from_user)
     parts = callback.data.split(":")
     leave_phone_callback_data = "lead:contact_manager:phone"
+    back_callback_data = "guarantees:home"
     if len(parts) >= 6:
         _, _, category_id, country_id, engine_id, model_id, *rest = parts
         leave_phone_callback_data = (
             f"auto_model:leave_phone:{category_id}:{country_id}:{engine_id}:{model_id}"
         )
+        back_callback_data = f"auto_model_pick:{category_id}:{country_id}:{engine_id}:{model_id}"
         if rest:
             leave_phone_callback_data = f"{leave_phone_callback_data}:{rest[0]}"
+            back_callback_data = f"{back_callback_data}:{rest[0]}"
 
     await callback.message.answer(
         "<b>Выберите способ связи с менеджером ⤵️</b>",
         parse_mode="HTML",
         reply_markup=get_manager_contact_keyboard(
             leave_phone_callback_data=leave_phone_callback_data,
+            back_callback_data=back_callback_data,
         ),
     )
     await callback.answer()

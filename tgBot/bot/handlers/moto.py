@@ -151,7 +151,7 @@ async def moto_country_callback(callback: types.CallbackQuery):
     await callback.answer()
 
 
-@router.callback_query(F.data.startswith("moto_model:") & (~F.data.startswith("moto_model:want:")))
+@router.callback_query(F.data.startswith("moto_model:") & (~F.data.startswith("moto_model:leave_phone:")))
 async def moto_model_callback(callback: types.CallbackQuery, state: FSMContext):
     await ensure_user_exists(callback.from_user)
     if await state.get_state() in {
@@ -182,8 +182,8 @@ async def moto_model_callback(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
-@router.callback_query(F.data.startswith("moto_model:want:"))
-async def moto_model_want_callback(callback: types.CallbackQuery, state: FSMContext):
+@router.callback_query(F.data.startswith("moto_model:leave_phone:"))
+async def moto_model_leave_phone_callback(callback: types.CallbackQuery, state: FSMContext):
     await ensure_user_exists(callback.from_user)
     parts = callback.data.split(":")
     if len(parts) == 4:
@@ -206,7 +206,7 @@ async def moto_model_want_callback(callback: types.CallbackQuery, state: FSMCont
     await start_phone_country_flow(
         callback.message,
         state,
-        lead_action="moto_model_want",
+        lead_action="moto_model_leave_phone",
         lead_message_text=f"{budget_name} / {country_title}: {lead_message}",
         lead_price_range=f"Мото / {budget_name} / {country_title}",
         back_target="moto_pick",

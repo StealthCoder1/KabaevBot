@@ -9,7 +9,7 @@ HOME_INLINE_BUTTON_TEXT = "📌 На главную"
 
 BUDGET_PROMPT_TEXT = "<b>💸 В каком бюджете ищете автомобиль?</b>"
 PHONE_COUNTRY_PROMPT_TEXT = "🌍 Выберите страну номера, который хотите оставить:"
-LEAD_SAVED_TEXT = "Спасибо. Менеджер свяжется с вами."
+LEAD_SAVED_TEXT = "Благодарим за заявку! В ближайшее время с вами свяжется наш менеджер."
 CONTACT_MANAGER_CHOICE_TEXT = "<b>Выберите способ связи с менеджером ⤵️</b>"
 
 MAIN_MENU_ACTION_TEXT = "Выберите действие:"

@@ -203,9 +203,15 @@ async def collect_contact_from_button(message: types.Message, state: FSMContext,
     )
     await notify_admins_new_lead(bot, lead)
     await state.clear()
+    reply_markup = _default_reply_keyboard_for_user(message.from_user)
+    if reply_markup:
+        tmp_msg = await message.answer("✅", reply_markup=reply_markup)
+        if isinstance(reply_markup, types.ReplyKeyboardRemove):
+            await tmp_msg.delete()
+
     await message.answer(
         LEAD_SAVED_TEXT,
-        reply_markup=_default_reply_keyboard_for_user(message.from_user),
+        reply_markup=get_lead_saved_keyboard(),
     )
 
 
@@ -258,9 +264,15 @@ async def collect_contact(message: types.Message, state: FSMContext, bot: Bot):
     )
     await notify_admins_new_lead(bot, lead)
     await state.clear()
+    reply_markup = _default_reply_keyboard_for_user(message.from_user)
+    if reply_markup:
+        tmp_msg = await message.answer("✅", reply_markup=reply_markup)
+        if isinstance(reply_markup, types.ReplyKeyboardRemove):
+            await tmp_msg.delete()
+
     await message.answer(
         LEAD_SAVED_TEXT,
-        reply_markup=_default_reply_keyboard_for_user(message.from_user),
+        reply_markup=get_lead_saved_keyboard(),
     )
 
 
@@ -306,7 +318,13 @@ async def collect_manual_phone(message: types.Message, state: FSMContext, bot: B
     )
     await notify_admins_new_lead(bot, lead)
     await state.clear()
+    reply_markup = _default_reply_keyboard_for_user(message.from_user)
+    if reply_markup:
+        tmp_msg = await message.answer("✅", reply_markup=reply_markup)
+        if isinstance(reply_markup, types.ReplyKeyboardRemove):
+            await tmp_msg.delete()
+
     await message.answer(
         LEAD_SAVED_TEXT,
-        reply_markup=_default_reply_keyboard_for_user(message.from_user),
+        reply_markup=get_lead_saved_keyboard(),
     )

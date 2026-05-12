@@ -184,22 +184,28 @@ def get_auto_model_actions_keyboard(
     leave_phone_callback_data = (
         f"auto_model:leave_phone:{category_id}:{country_id}:{engine_id}:{model_id}"
     )
+    back_callback_data = f"price_engine:{category_id}:{country_id}:{engine_id}"
     if source_token:
         leave_phone_callback_data = f"{leave_phone_callback_data}:{source_token}"
+        back_callback_data = f"{back_callback_data}:{source_token}"
 
     kb.button(text="✉️ Написать менеджеру", url=MANAGER_TELEGRAM_URL)
     kb.button(text="📞 Оставить мой номер телефона", callback_data=leave_phone_callback_data)
     kb.button(text=HOME_INLINE_BUTTON_TEXT, callback_data="guarantees:home")
-    kb.adjust(1, 1, 1)
+    kb.button(text=BACK_BUTTON_TEXT, callback_data=back_callback_data)
+    kb.adjust(1, 1, 1, 1)
     return kb.as_markup()
 
 def get_manager_contact_keyboard(
     leave_phone_callback_data: str = "lead:contact_manager:phone",
+    back_callback_data: str = "guarantees:home",
 ) -> types.InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
     kb.button(text="✉️ Написать менеджеру", url=MANAGER_TELEGRAM_URL)
     kb.button(text="📞 Оставить мой номер телефона", callback_data=leave_phone_callback_data)
-    kb.adjust(1, 1)
+    if back_callback_data:
+        kb.button(text=BACK_BUTTON_TEXT, callback_data=back_callback_data)
+    kb.adjust(1, 1, 1)
     return kb.as_markup()
 
 def get_phone_country_keyboard(
@@ -238,13 +244,13 @@ def get_moto_model_actions_keyboard(
     country_id: str = "usa",
 ) -> types.InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
-    kb.button(
-        text="😍Хочу этот мото",
-        callback_data=f"moto_model:want:{class_id}:{country_id}:{model_id}",
-    )
+    leave_phone_callback_data = f"moto_model:leave_phone:{class_id}:{country_id}:{model_id}"
+
+    kb.button(text="✉️ Написать менеджеру", url=MANAGER_TELEGRAM_URL)
+    kb.button(text="📞 Оставить мой номер телефона", callback_data=leave_phone_callback_data)
     kb.button(text=HOME_INLINE_BUTTON_TEXT, callback_data="guarantees:home")
     kb.button(text=BACK_BUTTON_TEXT, callback_data=f"moto_class:{class_id}")
-    kb.adjust(1, 1, 1)
+    kb.adjust(1, 1, 1, 1)
     return kb.as_markup()
 
 def get_max_profit_keyboard() -> types.InlineKeyboardMarkup:
@@ -446,3 +452,9 @@ def get_admin_keyboard() -> types.ReplyKeyboardMarkup:
     kb.button(text="Канал лидов")
     kb.adjust(1, 1, 1, 1)
     return kb.as_markup(resize_keyboard=True)
+
+def get_lead_saved_keyboard() -> types.InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    kb.button(text="Главное меню", callback_data="guarantees:home")
+    kb.adjust(1)
+    return kb.as_markup()

@@ -111,7 +111,7 @@ async def start_bot():
 
     for admin_id in get_configured_admin_ids(exclude_user_ids={bot.id}):
         try:
-            await bot.send_message(admin_id, "Бот запущен. Команда админки: /admin")
+            await bot.send_message(admin_id, "Бот запущен. Команда админки: /admin \n Старт: /start")
         except Exception as exc:
             log_admin_delivery_error(admin_id, exc, action="написать")
 

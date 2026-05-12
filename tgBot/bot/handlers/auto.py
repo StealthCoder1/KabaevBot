@@ -413,7 +413,7 @@ async def lead_phone_country_callback(callback: types.CallbackQuery, state: FSMC
     example = "+79991234567" if country_code == "ru" else "+375291234567"
     await callback.message.answer(
         f"📱 Введите номер {country_label} вручную.\nПример: {example}",
-        reply_markup=get_manual_phone_request_keyboard(),
+        reply_markup=types.ReplyKeyboardRemove(),
     )
     await callback.answer()
 

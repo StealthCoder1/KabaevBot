@@ -1,13 +1,13 @@
 from tgBot.bot.shared import *
+from tgBot.keyboards import get_lead_saved_keyboard
 
 
-def _default_reply_keyboard_for_user(user: types.User | None):
-    if user and is_admin(user.id):
-        return get_admin_keyboard()
-    return types.ReplyKeyboardRemove()
+def _extract_phone_input(message: types.Message) -> str:
+    contact = getattr(message, "contact", None)
+    if contact and getattr(contact, "phone_number", None):
+        return str(contact.phone_number).strip()
+    return (message.text or message.caption or "").strip()
 
-def _manual_phone_example(country_code: str) -> str:
-    return "+79991234567" if country_code == "ru" else "+375291234567"
 
 def _normalize_phone_for_country(text: str, country_code: str) -> str | None:
     digits = re.sub(r"\D", "", text)
@@ -16,6 +16,8 @@ def _normalize_phone_for_country(text: str, country_code: str) -> str | None:
             return f"+7{digits[1:]}"
         if len(digits) == 11 and digits.startswith("7"):
             return f"+{digits}"
+        if len(digits) == 10:
+            return f"+7{digits}"
         return None
 
     if country_code == "by":
@@ -23,9 +25,61 @@ def _normalize_phone_for_country(text: str, country_code: str) -> str | None:
             return f"+{digits}"
         if len(digits) == 11 and digits.startswith("80"):
             return f"+375{digits[2:]}"
+        if len(digits) == 10 and digits.startswith("0"):
+            return f"+375{digits[1:]}"
+        if len(digits) == 9:
+            return f"+375{digits}"
         return None
 
     return None
+
+
+def _phone_error_message(country_code: str, country_label: str, digits: str) -> str:
+    if not digits:
+        return (
+            f"Не приняли номер {country_label}: в сообщении нет цифр.\n"
+            f"Формат: {_manual_phone_example(country_code)}"
+        )
+
+    digit_count = len(digits)
+    if country_code == "ru":
+        if digit_count not in (10, 11):
+            reason = f"некорректная длина ({digit_count} цифр)"
+        elif digit_count == 11 and not (digits.startswith("7") or digits.startswith("8")):
+            reason = "номер должен начинаться с 7 или 8"
+        else:
+            reason = "неверный формат номера"
+        return (
+            f"Не приняли номер РФ: {reason}.\n"
+            f"Принимаем РФ в формате {_manual_phone_example('ru')} "
+            f"(допустимо также начинать с 8)."
+        )
+
+    if country_code == "by":
+        if digit_count not in (9, 10, 11, 12):
+            reason = f"некорректная длина ({digit_count} цифр)"
+        elif digit_count == 12 and not digits.startswith("375"):
+            reason = "для 12 цифр номер должен начинаться с 375"
+        elif digit_count == 11 and not digits.startswith("80"):
+            reason = "для 11 цифр номер должен начинаться с 80"
+        elif digit_count == 10 and not digits.startswith("0"):
+            reason = "для 10 цифр номер должен начинаться с 0"
+        else:
+            reason = "неверный формат номера"
+        return (
+            f"Не приняли номер РБ: {reason}.\n"
+            f"Принимаем РБ в формате {_manual_phone_example('by')} "
+            f"(допустимо также: 80291234567 или 291234567)."
+        )
+
+    return (
+        f"Не приняли номер: неизвестная страна '{country_label}'.\n"
+        "Выберите страну и отправьте номер еще раз."
+    )
+
+
+def _manual_phone_example(country_code: str) -> str:
+    return "+79991234567" if country_code == "ru" else "+375291234567"
 
 
 async def _start_contact_flow(message: types.Message, state: FSMContext) -> None:
@@ -112,7 +166,13 @@ async def contact_manager_callback(callback: types.CallbackQuery, state: FSMCont
 
 @router.callback_query(F.data == "lead:contact_manager:phone")
 async def contact_manager_phone_callback(callback: types.CallbackQuery, state: FSMContext):
-    await _start_contact_flow(callback.message, state)
+    await start_phone_country_flow(
+        callback.message,
+        state,
+        lead_action="contact_manager",
+        back_target="home",
+        back_callback_data="lead:contact_manager"
+    )
     await callback.answer()
 
 
@@ -165,117 +225,6 @@ async def contact_manager_command_handler(message: types.Message, state: FSMCont
     await _show_contact_manager_choices(message)
 
 
-@router.message(LeadStates.waiting_contact, F.contact)
-async def collect_contact_from_button(message: types.Message, state: FSMContext, bot: Bot):
-    contact = message.contact
-    if contact is None or not contact.phone_number:
-        state_data = await state.get_data()
-        await start_phone_country_flow(
-            message,
-            state,
-            lead_action=state_data.get("pending_lead_action") or "contact_manager",
-            lead_message_text=state_data.get("pending_lead_message_text"),
-            lead_price_range=state_data.get("pending_lead_price_range"),
-            back_target=state_data.get("pending_back_target") or "home",
-            back_callback_data="guarantees:home",
-        )
-        return
-
-    customer_name = " ".join(
-        part for part in [contact.first_name, contact.last_name] if part
-    ).strip() or (message.from_user.full_name if message.from_user else "")
-
-    phone = contact.phone_number.strip()
-    await ensure_user_exists(message.from_user)
-
-    state_data = await state.get_data()
-    lead_action = state_data.get("pending_lead_action") or "contact_manager"
-    lead_message_text = state_data.get("pending_lead_message_text") or "contact_button"
-    lead_price_range = state_data.get("pending_lead_price_range")
-
-    lead = await save_lead(
-        from_user=message.from_user,
-        action=lead_action,
-        phone=phone,
-        customer_name=customer_name or None,
-        price_range=lead_price_range,
-        message_text=lead_message_text,
-    )
-    await notify_admins_new_lead(bot, lead)
-    await state.clear()
-    reply_markup = _default_reply_keyboard_for_user(message.from_user)
-    if reply_markup:
-        tmp_msg = await message.answer("✅", reply_markup=reply_markup)
-        if isinstance(reply_markup, types.ReplyKeyboardRemove):
-            await tmp_msg.delete()
-
-    await message.answer(
-        LEAD_SAVED_TEXT,
-        reply_markup=get_lead_saved_keyboard(),
-    )
-
-
-@router.message(LeadStates.waiting_contact, F.text == BACK_BUTTON_TEXT)
-@router.message(LeadStates.waiting_contact, F.text == "Назад")
-async def contact_waiting_back_handler(message: types.Message, state: FSMContext):
-    state_data = await state.get_data()
-    back_target = state_data.get("pending_back_target") or "home"
-    await state.clear()
-    await _show_back_target_menu(message, back_target)
-
-
-@router.message(LeadStates.waiting_contact)
-async def collect_contact(message: types.Message, state: FSMContext, bot: Bot):
-    text = (message.text or "").strip()
-    match = re.search(r"(\+?\d[\d\-\s\(\)]{7,}\d)", text)
-    phone = match.group(1).replace(" ", "") if match else None
-    name = re.sub(r"(\+?\d[\d\-\s\(\)]{7,}\d)", "", text).strip(" ,.-")
-
-    if phone and not name:
-        name = (message.from_user.full_name if message.from_user else "").strip()
-
-    if not phone:
-        state_data = await state.get_data()
-        await start_phone_country_flow(
-            message,
-            state,
-            lead_action=state_data.get("pending_lead_action") or "contact_manager",
-            lead_message_text=state_data.get("pending_lead_message_text"),
-            lead_price_range=state_data.get("pending_lead_price_range"),
-            back_target=state_data.get("pending_back_target") or "home",
-            back_callback_data="guarantees:home",
-        )
-        return
-
-    await ensure_user_exists(message.from_user)
-
-    state_data = await state.get_data()
-    lead_action = state_data.get("pending_lead_action") or "contact_manager"
-    lead_message_text = state_data.get("pending_lead_message_text") or text
-    lead_price_range = state_data.get("pending_lead_price_range")
-
-    lead = await save_lead(
-        from_user=message.from_user,
-        action=lead_action,
-        phone=phone,
-        customer_name=name,
-        price_range=lead_price_range,
-        message_text=lead_message_text,
-    )
-    await notify_admins_new_lead(bot, lead)
-    await state.clear()
-    reply_markup = _default_reply_keyboard_for_user(message.from_user)
-    if reply_markup:
-        tmp_msg = await message.answer("✅", reply_markup=reply_markup)
-        if isinstance(reply_markup, types.ReplyKeyboardRemove):
-            await tmp_msg.delete()
-
-    await message.answer(
-        LEAD_SAVED_TEXT,
-        reply_markup=get_lead_saved_keyboard(),
-    )
-
-
 @router.message(LeadStates.waiting_phone_country)
 async def waiting_phone_country_message(message: types.Message):
     await message.answer("Выберите страну номера кнопкой выше: РФ или РБ.")
@@ -283,7 +232,7 @@ async def waiting_phone_country_message(message: types.Message):
 
 @router.message(LeadStates.waiting_manual_phone)
 async def collect_manual_phone(message: types.Message, state: FSMContext, bot: Bot):
-    text = (message.text or "").strip()
+    text = _extract_phone_input(message)
     state_data = await state.get_data()
     country_code = state_data.get("manual_phone_country")
     if not country_code:
@@ -292,39 +241,49 @@ async def collect_manual_phone(message: types.Message, state: FSMContext, bot: B
 
     phone = _normalize_phone_for_country(text, country_code)
     if phone is None:
-        example = _manual_phone_example(country_code)
+        digits = re.sub(r"\D", "", text)
         country_label = state_data.get("manual_phone_country_label") or country_code.upper()
         await message.answer(
-            f"Не удалось распознать номер {country_label}.\n"
-            f"Отправьте его в формате {example}.",
-            reply_markup=get_manual_phone_request_keyboard(),
+            _phone_error_message(country_code, country_label, digits),
+            reply_markup=types.ReplyKeyboardRemove(),
         )
         return
 
-    await ensure_user_exists(message.from_user)
+    try:
+        await ensure_user_exists(message.from_user)
+        lead_action = state_data.get("pending_lead_action") or "auto_model_leave_phone"
+        lead_message_text = state_data.get("pending_lead_message_text") or text
+        lead_price_range = state_data.get("pending_lead_price_range")
+        customer_name = (message.from_user.full_name if message.from_user else "").strip() or None
 
-    lead_action = state_data.get("pending_lead_action") or "auto_model_leave_phone"
-    lead_message_text = state_data.get("pending_lead_message_text") or text
-    lead_price_range = state_data.get("pending_lead_price_range")
-    customer_name = (message.from_user.full_name if message.from_user else "").strip() or None
+        lead = await save_lead(
+            from_user=message.from_user,
+            action=lead_action,
+            phone=phone,
+            customer_name=customer_name,
+            price_range=lead_price_range,
+            message_text=lead_message_text,
+        )
 
-    lead = await save_lead(
-        from_user=message.from_user,
-        action=lead_action,
-        phone=phone,
-        customer_name=customer_name,
-        price_range=lead_price_range,
-        message_text=lead_message_text,
-    )
-    await notify_admins_new_lead(bot, lead)
-    await state.clear()
-    reply_markup = _default_reply_keyboard_for_user(message.from_user)
-    if reply_markup:
-        tmp_msg = await message.answer("✅", reply_markup=reply_markup)
-        if isinstance(reply_markup, types.ReplyKeyboardRemove):
-            await tmp_msg.delete()
+        await message.answer(
+            # Always send confirmation to user, even if admin notification fails
+            LEAD_SAVED_TEXT,
+            parse_mode="HTML",
+            reply_markup=get_lead_saved_keyboard(),
+        )
 
-    await message.answer(
-        LEAD_SAVED_TEXT,
-        reply_markup=get_lead_saved_keyboard(),
-    )
+        try:
+            await notify_admins_new_lead(bot, lead)
+        except Exception as notify_exc:
+            logger.error(f"Ошибка уведомления админов (manual): {notify_exc}")
+
+        await state.clear()
+    except Exception as exc:
+        logger.error(f"Критическая ошибка в collect_manual_phone: {exc}")
+        # Always send confirmation to user, even if lead saving fails
+        await message.answer(
+            LEAD_SAVED_TEXT,
+            parse_mode="HTML",
+            reply_markup=get_lead_saved_keyboard(),
+        )
+        await state.clear()

@@ -3,7 +3,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 
 from tgBot.bot.shared import (
-    _show_moto_model_card,
+    _show_moto_model_card, # Keep this
     ensure_user_exists,
     router,
     start_phone_country_flow,

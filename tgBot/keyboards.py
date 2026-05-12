@@ -219,15 +219,6 @@ def get_phone_country_keyboard(
     kb.adjust(1, 1, 1)
     return kb.as_markup()
 
-def get_manual_phone_request_keyboard() -> types.ReplyKeyboardMarkup:
-    return types.ReplyKeyboardMarkup(
-        keyboard=[
-            [types.KeyboardButton(text=HOME_REPLY_BUTTON_TEXT)],
-        ],
-        resize_keyboard=True,
-        one_time_keyboard=True,
-    )
-
 def get_moto_country_keyboard(
     class_id: str,
     back_callback_data: str = "lead:moto_pick",
@@ -455,6 +446,16 @@ def get_admin_keyboard() -> types.ReplyKeyboardMarkup:
 
 def get_lead_saved_keyboard() -> types.InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
-    kb.button(text="Главное меню", callback_data="guarantees:home")
+    kb.button(text="Вернуться на главное меню", callback_data="guarantees:home")
     kb.adjust(1)
     return kb.as_markup()
+
+
+def get_request_contact_keyboard(
+    back_callback_data: str,
+) -> types.ReplyKeyboardMarkup:
+    kb = ReplyKeyboardBuilder()
+    kb.button(text="Поделиться контактом", request_contact=True)
+    kb.button(text=BACK_BUTTON_TEXT)
+    kb.adjust(1, 1)
+    return kb.as_markup(resize_keyboard=True, one_time_keyboard=True)

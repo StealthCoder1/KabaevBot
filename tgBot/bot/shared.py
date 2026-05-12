@@ -55,7 +55,6 @@ from tgBot.keyboards import (
     get_max_profit_keyboard,
     get_moto_classes_keyboard,
     get_moto_model_actions_keyboard,
-    get_manual_phone_request_keyboard,
     get_post_actions_keyboard,
     get_pricing_countries_keyboard,
     get_pricing_korea_tech_keyboard,
@@ -277,6 +276,7 @@ async def start_phone_country_flow(
         "pending_lead_message_text": lead_message_text,
         "pending_lead_price_range": lead_price_range,
         "pending_back_target": back_target,
+        "pending_back_callback_data": back_callback_data,
         "manual_phone_country": None,
     }
     if extra_state_data:
@@ -439,15 +439,16 @@ async def ensure_user_exists(from_user: types.User) -> None:
                 await session.commit()
             return
 
-        session.add(
-            User(
-                role=user_role,
-                telegram_id=db_telegram_id,
-                username=from_user.username,
-                first_name=first_name,
-                last_name=last_name,
-            )
+        user_kwargs = _filter_model_kwargs(
+            User,
+            role=user_role,
+            telegram_id=db_telegram_id,
+            username=from_user.username,
+            first_name=first_name,
+            last_name=last_name,
+            date_start=datetime.utcnow(),
         )
+        session.add(User(**user_kwargs))
         await session.commit()
 
 

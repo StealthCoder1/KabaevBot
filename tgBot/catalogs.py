@@ -453,8 +453,9 @@ def _get_auto_models_keyboard(
         return None
 
     rows = _resolve_keyboard_rows(layout, items_count)
+    kb.button(text="Хотите другой автомобиль?", callback_data="lead:contact_manager")
     kb.button(text=BACK_BUTTON_TEXT, callback_data=back_callback_data)
-    kb.adjust(*rows, 1)
+    kb.adjust(*rows, 1, 1)
     return kb.as_markup()
 
 
@@ -797,6 +798,8 @@ def _get_moto_models_keyboard(
     if not rows:
         return None
 
+    kb.button(text="Хотите другой мотоцикл?", callback_data="lead:contact_manager")
+    rows.append(1)
     kb.button(text=BACK_BUTTON_TEXT, callback_data=back_callback_data)
     rows.append(1)
     kb.adjust(*rows)

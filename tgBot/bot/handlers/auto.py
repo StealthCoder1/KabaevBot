@@ -30,6 +30,13 @@ AUTO_BUDGET_MODELS_BODY = (
     "•  пробег,\n"
     "•  комплектация."
 )
+AUTO_BUDGET_MODELS_BODY_NO_DAMAGE = (
+    "Перед вами список, который подходят под заданные параметры.\n"
+    "Важно: цена на одинаковые модели и годы выпуска может существенно различаться. "
+    "Это зависит от нескольких ключевых факторов:\n"
+    "•  пробег,\n"
+    "•  комплектация."
+)
 AUTO_BUDGET_SAVINGS_TEXT = "📊 Экономия по сравнению с рынком Беларуси до 40%"
 AUTO_BUDGET_MODELS_FOOTER = "Мы опираемся только на статистику, а значит — на реальные цифры, а не на догадки!"
 MANUAL_PHONE_FLOW_STATES = {
@@ -106,6 +113,7 @@ def _build_auto_price_range_label(
 def _get_auto_budget_intro_text(
     category_id: str,
     *,
+    country_id: str | None = None,
     country_title: str | None = None,
     engine_title: str | None = None,
 ) -> str:
@@ -113,9 +121,15 @@ def _get_auto_budget_intro_text(
     if engine_title:
         header_lines.append(f"⛽️ Тип двигателя: {engine_title.lower()}")
 
+    budget_models_body = (
+        AUTO_BUDGET_MODELS_BODY_NO_DAMAGE
+        if country_id in {"korea", "china"}
+        else AUTO_BUDGET_MODELS_BODY
+    )
+
     blocks = [
         "\n".join(header_lines),
-        AUTO_BUDGET_MODELS_BODY,
+        budget_models_body,
         f"{AUTO_BUDGET_SAVINGS_TEXT}\n<b>{AUTO_BUDGET_MODELS_FOOTER}</b>",
     ]
     return "\n\n".join(blocks)
@@ -223,6 +237,7 @@ async def price_country_callback(callback: types.CallbackQuery, state: FSMContex
         await callback.message.answer(
             _get_auto_budget_intro_text(
                 category_id,
+                country_id=country_id,
                 country_title=_get_auto_country_title(category_id, country_id) or country_id,
                 engine_title=None if engine_id == "all" or str(engine_title).strip().lower() == "все" else engine_title,
             ),
@@ -270,6 +285,7 @@ async def price_engine_callback(callback: types.CallbackQuery, state: FSMContext
     await callback.message.answer(
         _get_auto_budget_intro_text(
             category_id,
+            country_id=country_id,
             country_title=country_title,
             engine_title=engine_title,
         ),

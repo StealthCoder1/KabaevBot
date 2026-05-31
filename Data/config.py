@@ -30,6 +30,18 @@ def _parse_bool(raw_value: str | None, default: bool = False) -> bool:
     return raw_value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _parse_optional_int(raw_value: str | None) -> int | None:
+    if raw_value is None:
+        return None
+    normalized = raw_value.strip()
+    if not normalized:
+        return None
+    try:
+        return int(normalized)
+    except ValueError:
+        return None
+
+
 _load_env_file()
 
 
@@ -41,3 +53,14 @@ DATABASE_URL = os.getenv(
     "postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/kabaevbot?ssl=disable",
 )
 INTERVAL_MINUTES_FOR_SEND_DB = int(os.getenv("INTERVAL_MINUTES_FOR_SEND_DB", "30"))
+
+REQUIRE_CHANNEL_SUBSCRIPTION = _parse_bool(
+    os.getenv("REQUIRE_CHANNEL_SUBSCRIPTION"),
+    True,
+)
+REQUIRED_CHANNEL_CHAT_ID = _parse_optional_int(os.getenv("REQUIRED_CHANNEL_CHAT_ID"))
+REQUIRED_CHANNEL_USERNAME = os.getenv("REQUIRED_CHANNEL_USERNAME", "autopartner_by").strip().lstrip("@")
+_default_required_channel_url = (
+    f"https://t.me/{REQUIRED_CHANNEL_USERNAME}" if REQUIRED_CHANNEL_USERNAME else ""
+)
+REQUIRED_CHANNEL_URL = os.getenv("REQUIRED_CHANNEL_URL", _default_required_channel_url).strip()

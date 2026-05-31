@@ -1,6 +1,7 @@
 from aiogram import types
 from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
 
+from Data.config import REQUIRED_CHANNEL_URL
 from tgBot.catalogs import (
     _get_auto_countries_keyboard,
     _get_auto_engines_keyboard,
@@ -18,7 +19,8 @@ from tgBot.texts import (
 )
 
 MANAGER_TELEGRAM_URL = "https://t.me/autopartner_import"
-CHANNEL_TELEGRAM_URL = "https://t.me/autopartner_by"
+CHANNEL_TELEGRAM_URL = REQUIRED_CHANNEL_URL or "https://t.me/autopartner_by"
+SUBSCRIPTION_CHECK_CALLBACK_DATA = "subscription:check"
 
 
 def get_user_reply_keyboard() -> types.ReplyKeyboardMarkup:
@@ -87,6 +89,15 @@ def get_start_keyboard() -> types.InlineKeyboardMarkup:
     kb.button(text="❓ Часто задаваемые вопросы", callback_data="info:quick_main")
     kb.button(text=CONTACT_MANAGER_START_INLINE_TEXT, callback_data="lead:contact_manager")
     kb.adjust(1, 1, 1, 1, 1, 1, 1, 1)
+    return kb.as_markup()
+
+
+def get_required_subscription_keyboard(channel_url: str | None = None) -> types.InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    subscription_url = (channel_url or CHANNEL_TELEGRAM_URL).strip() or CHANNEL_TELEGRAM_URL
+    kb.button(text="Подписаться на канал", url=subscription_url)
+    kb.button(text="Проверить подписку", callback_data=SUBSCRIPTION_CHECK_CALLBACK_DATA)
+    kb.adjust(1, 1)
     return kb.as_markup()
 
 def get_price_range_keyboard(

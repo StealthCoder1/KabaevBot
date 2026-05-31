@@ -3,6 +3,7 @@ import os
 from aiogram.utils.backoff import BackoffConfig
 
 from tgBot.bot.shared import *
+from tgBot.bot.middlewares import RequiredChannelSubscriptionMiddleware
 
 # Import handler modules for side effects (router registration)
 from tgBot.bot.handlers import start_admin as _start_admin_handlers  # noqa: F401
@@ -80,6 +81,9 @@ async def _clear_legacy_chat_commands(bot: Bot) -> None:
 
 def get_application():
     dp = Dispatcher()
+    subscription_middleware = RequiredChannelSubscriptionMiddleware()
+    dp.message.outer_middleware(subscription_middleware)
+    dp.callback_query.outer_middleware(subscription_middleware)
     dp.include_router(router)
     return dp
 
